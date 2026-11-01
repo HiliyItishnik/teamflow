@@ -1,6 +1,9 @@
 package com.teamflow.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.info.Info;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +15,9 @@ public class OpenApiConfig {
         return new OpenAPI().info(new Info()
                 .title("TeamFlow API")
                 .version("0.1.0")
-                .description("Stage 1: workspaces, projects and tasks. Authentication is planned for stage 2."));
+                .description("Workspaces, projects and tasks with JWT authentication and workspace-scoped roles."))
+                .components(new Components().addSecuritySchemes("bearerAuth", new SecurityScheme()
+                        .type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))
+                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
     }
 }

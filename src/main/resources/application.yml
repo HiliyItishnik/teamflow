@@ -18,6 +18,11 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
+      fail-on-numbers-for-enums: true
+teamflow:
+  jwt:
+    secret: ${JWT_SECRET:}
+    time-to-live: 30m
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8080}

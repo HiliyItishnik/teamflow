@@ -1,23 +1,17 @@
 package com.teamflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,35 +20,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-class TeamFlowApiIT {
+class TeamFlowApiIT extends PostgresIntegrationTest {
     private static final String ROOT = "/api/v1/workspaces";
 
-    @DynamicPropertySource
-    static void database(DynamicPropertyRegistry registry) {
-        // An explicit disposable database can be used on machines without Docker.
-        String externalUrl = System.getenv("TEAMFLOW_TEST_DB_URL");
-        if (externalUrl != null && !externalUrl.isBlank()) {
-            registry.add("spring.datasource.url", () -> externalUrl);
-            registry.add("spring.datasource.username", () -> System.getenv("TEAMFLOW_TEST_DB_USERNAME"));
-            registry.add("spring.datasource.password", () -> System.getenv("TEAMFLOW_TEST_DB_PASSWORD"));
-        } else {
-            PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
-            postgres.start();
-            registry.add("spring.datasource.url", postgres::getJdbcUrl);
-            registry.add("spring.datasource.username", postgres::getUsername);
-            registry.add("spring.datasource.password", postgres::getPassword);
-        }
-    }
-
-    @Autowired MockMvc mvc;
-    @Autowired ObjectMapper json;
-    @Autowired JdbcTemplate jdbc;
-
     @BeforeEach
-    void cleanDatabase() {
-        jdbc.execute("TRUNCATE TABLE workspaces CASCADE");
+    void cleanDatabase() throws Exception {
+        clearDatabase();
+        String body = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("email", "owner@example.test", "displayName", "Owner", "password", "Owner-password-123"))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String token = json.readTree(body).get("accessToken").asText();
+        mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity())
+                .defaultRequest(get("/").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).build();
     }
 
     @Test
@@ -181,9 +158,9 @@ class TeamFlowApiIT {
     @Test
     void databaseConstraintsAndMigrationAreApplied() {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Long.class))
-                .isEqualTo(1);
+                .isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.table_constraints "
-                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(2);
+                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(4);
     }
 
     @Test

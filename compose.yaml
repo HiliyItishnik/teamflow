@@ -23,6 +23,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-teamflow}
       DB_USERNAME: ${POSTGRES_USER:-teamflow}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-teamflow_dev}
+      JWT_SECRET: ${JWT_SECRET:?Run scripts/init-env.ps1 or set JWT_SECRET to a random Base64 key}
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     depends_on:

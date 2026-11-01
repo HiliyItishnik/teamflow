@@ -1,7 +1,35 @@
 @baseUrl = http://localhost:8080
 
+### Зарегистрировать владельца (один раз для каждого email)
+POST {{baseUrl}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "owner@example.test",
+  "displayName": "Owner",
+  "password": "Change-this-password-123"
+}
+
+> {% client.global.set("accessToken", response.body.accessToken); %}
+
+### Войти повторно, если пользователь уже зарегистрирован или токен истёк
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "owner@example.test",
+  "password": "Change-this-password-123"
+}
+
+> {% client.global.set("accessToken", response.body.accessToken); %}
+
+### Текущий пользователь
+GET {{baseUrl}}/api/v1/auth/me
+Authorization: Bearer {{accessToken}}
+
 ### 1. Создать рабочее пространство
 POST {{baseUrl}}/api/v1/workspaces
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -13,6 +41,7 @@ Content-Type: application/json
 
 ### 2. Создать проект
 POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -24,6 +53,7 @@ Content-Type: application/json
 
 ### 3. Создать задачу
 POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -38,9 +68,11 @@ Content-Type: application/json
 
 ### 4. Список задач с фильтрами и пагинацией
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?status=TODO&priority=HIGH&page=0&size=20
+Authorization: Bearer {{accessToken}}
 
 ### 5. Полное обновление изменяемых полей задачи
 PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -53,15 +85,60 @@ Content-Type: application/json
 
 ### 6. Получить задачу
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+Authorization: Bearer {{accessToken}}
 
 ### 7. Список проектов
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects?page=0&size=20
+Authorization: Bearer {{accessToken}}
 
 ### 8. Список рабочих пространств
 GET {{baseUrl}}/api/v1/workspaces?page=0&size=20
+Authorization: Bearer {{accessToken}}
 
 ### 9. Health
 GET {{baseUrl}}/actuator/health
 
 ### 10. Удаление созданной задачи
 DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+Authorization: Bearer {{accessToken}}
+
+### Зарегистрировать второго пользователя (токен владельца сохраняется)
+POST {{baseUrl}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "member@example.test",
+  "displayName": "Member",
+  "password": "Another-password-123"
+}
+
+> {% client.global.set("memberId", response.body.user.id); client.global.set("memberToken", response.body.accessToken); %}
+
+### Владелец добавляет участника в команду
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "member@example.test",
+  "role": "MEMBER"
+}
+
+### Участник читает проекты своей команды
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
+Authorization: Bearer {{memberToken}}
+
+### Попытка участника создать проект — ожидается 403
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{"name": "Forbidden project"}
+
+### Список участников
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members
+Authorization: Bearer {{accessToken}}
+
+### Владелец удаляет участника; его прежний токен больше не даёт доступ к команде
+DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members/{{memberId}}
+Authorization: Bearer {{accessToken}}

@@ -3,13 +3,16 @@
 Учебная система управления командными проектами на **Java 21 + Spring Boot 3.5**.
 Монолит с REST API, PostgreSQL, миграциями Flyway и разделением на controller → service → repository.
 
-Реализована основа первого этапа: рабочие пространства, проекты и задачи. Регистрация,
-JWT и участники появятся на следующих этапах. Сейчас API не требует авторизации;
-локальный запуск и порты Docker Compose по умолчанию доступны только на `127.0.0.1`.
+Реализованы первые два этапа: рабочие пространства, проекты, задачи, регистрация,
+вход по JWT и роли участников. Локальный запуск и порты Docker Compose
+по умолчанию доступны только на `127.0.0.1`.
 
 ## Что работает
 
 - CRUD рабочих пространств, проектов и задач.
+- Регистрация, вход, текущий пользователь, BCrypt и JWT Bearer.
+- Роли `ADMIN` / `MEMBER` внутри рабочего пространства; управление участниками.
+- Изоляция данных команд и защита последнего администратора, включая конкурентные изменения.
 - Проверка принадлежности проекта рабочему пространству и задачи проекту для чтения и изменений.
 - Статусы `TODO`, `IN_PROGRESS`, `DONE`; приоритеты `LOW`, `MEDIUM`, `HIGH`; срок выполнения.
 - Пагинация всех списков и фильтрация задач по статусу и приоритету.
@@ -22,7 +25,7 @@ JWT и участники появятся на следующих этапах.
 Нужен запущенный Docker Desktop в режиме Linux containers. Java на компьютере для этого варианта не нужна.
 
 ```powershell
-Copy-Item .env.example .env
+.\scripts\init-env.ps1
 docker compose up --build -d
 docker compose logs -f app
 ```
@@ -36,6 +39,14 @@ docker compose logs -f app
 Остановка: `docker compose down`. Данные сохраняются в Docker volume `postgres_data`.
 Значения в `.env.example` предназначены для локальной разработки. `.env` исключён из Git.
 
+`init-env.ps1` создаёт `.env`, генерирует случайный ключ подписи JWT из 32 байтов
+и загружает его в текущую PowerShell-сессию. Повторный запуск сохраняет существующий ключ.
+Не копируй `.env.example` поверх настроенного `.env`.
+
+На Linux/macOS перед первым запуском скопируй `.env.example` в `.env` и задай
+`JWT_SECRET`: `export JWT_SECRET="$(openssl rand -base64 32)"`.
+Сохрани ключ в локальном `.env` или хранилище секретов, чтобы он не менялся после перезапуска.
+
 ## Запуск из IDE / PowerShell
 
 Установи JDK 21 и укажи его в `JAVA_HOME` и Project SDK в IDE.
@@ -43,6 +54,9 @@ docker compose logs -f app
 Открой `pom.xml` как Maven-проект в IntelliJ IDEA.
 
 ```powershell
+# Подготовить .env и JWT_SECRET в текущем терминале
+.\scripts\init-env.ps1
+
 # Запустить только базу данных
 docker compose up -d postgres
 
@@ -63,8 +77,11 @@ java -version
 | `DB_PASSWORD` | `teamflow_dev` |
 | `SERVER_PORT` | `8080` |
 | `SERVER_ADDRESS` | `127.0.0.1` |
+| `JWT_SECRET` | Обязательный Base64-ключ: минимум 32 случайных байта |
 
 Файл `.env` читает Docker Compose. Запуск через Maven или IDE не загружает его автоматически.
+Скрипт `init-env.ps1` экспортирует `JWT_SECRET` в текущий терминал; в IDE укажи ключ
+в переменных окружения Run Configuration (не сохраняй его в общие настройки проекта).
 Если поменял параметры PostgreSQL в `.env`, передай соответствующие `DB_*` приложению:
 
 ```powershell
@@ -81,24 +98,82 @@ $env:DB_PASSWORD = 'teamflow_dev'
 ## Первый запрос
 
 ```powershell
+$auth = Invoke-RestMethod -Method Post `
+  -Uri 'http://localhost:8080/api/v1/auth/register' `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body '{"email":"owner@example.test","displayName":"Owner","password":"Change-this-password-123"}'
+
+$headers = @{ Authorization = "Bearer $($auth.accessToken)" }
+
 $workspace = Invoke-RestMethod -Method Post `
   -Uri 'http://localhost:8080/api/v1/workspaces' `
+  -Headers $headers `
   -ContentType 'application/json; charset=utf-8' `
   -Body '{"name":"My team","description":"Learning Java backend"}'
 
 $project = Invoke-RestMethod -Method Post `
   -Uri "http://localhost:8080/api/v1/workspaces/$($workspace.id)/projects" `
+  -Headers $headers `
   -ContentType 'application/json; charset=utf-8' `
   -Body '{"name":"TeamFlow"}'
 
 Invoke-RestMethod -Method Post `
   -Uri "http://localhost:8080/api/v1/workspaces/$($workspace.id)/projects/$($project.id)/tasks" `
+  -Headers $headers `
   -ContentType 'application/json; charset=utf-8' `
   -Body '{"title":"Build REST API","status":"TODO","priority":"HIGH"}'
 ```
 
 В [requests/teamflow.http](requests/teamflow.http) есть последовательные примеры для IntelliJ HTTP Client.
 Идентификаторы созданных ресурсов сохраняются автоматически в переменные следующих запросов.
+
+## Авторизация и права
+
+| Метод и путь | Назначение |
+| --- | --- |
+| `POST /api/v1/auth/register` | Email, displayName, password → пользователь и access token; `201` |
+| `POST /api/v1/auth/login` | Email, password → access token; `200` |
+| `GET /api/v1/auth/me` | Текущий пользователь; нужен Bearer token |
+
+Email нормализуется: пробелы по краям удаляются, регистр приводится к нижнему.
+Пароль: минимум 10 символов, максимум 72 байта UTF-8 (ограничение BCrypt).
+Пароли не возвращаются в API; в БД хранится только BCrypt-хеш с cost 12.
+
+Токен живёт 30 минут. Передавай `Authorization: Bearer <accessToken>`.
+В Swagger нажми **Authorize** и вставь токен. После истечения срока выполни login повторно.
+Refresh token и серверный logout пока не реализованы: клиент удаляет токен у себя,
+но выданный токен действует до истечения срока. Замена ключа подписи инвалидирует все токены.
+Сервер проверяет подпись HS256, issuer, audience, UUID subject и время действия.
+Сессии и cookies для входа не используются.
+
+| Действие | ADMIN | MEMBER |
+| --- | --- | --- |
+| Читать workspace, проекты, задачи, участников | Да | Да |
+| Создавать, изменять и удалять задачи | Да | Да |
+| Создавать, изменять и удалять проекты | Да | Нет |
+| Изменять и удалять workspace | Да | Нет |
+| Добавлять/удалять участников, менять роли | Да | Нет |
+
+Создать workspace может любой вошедший пользователь: он становится `ADMIN`.
+Список workspace содержит только команды текущего пользователя.
+Чужая команда и её данные возвращают `404`; недостаток прав внутри своей команды — `403`;
+отсутствующий/невалидный токен или неправильный пароль — `401`.
+Роли загружаются из БД при запросах, поэтому удаление/понижение участника действует
+сразу для следующих запросов с уже выданным токеном. Один пользователь может иметь разные роли в разных командах.
+
+Участники рабочего пространства:
+
+| Метод | Путь относительно `/api/v1/workspaces/{workspaceId}` | Тело |
+| --- | --- | --- |
+| `GET` | `/members?page=0&size=20` | — |
+| `POST` | `/members` | `{"email":"member@example.test","role":"MEMBER"}` |
+| `PUT` | `/members/{userId}` | `{"role":"ADMIN"}` |
+| `DELETE` | `/members/{userId}` | — |
+
+Добавляемый пользователь должен уже зарегистрироваться. Приглашения по email — следующий этап.
+Повторное добавление участника возвращает `409`. Последнего администратора нельзя удалить
+или понизить: `409`. Проверка и изменение выполняются под блокировкой строки workspace.
+Участники отдельных проектов ещё не реализованы: сейчас участник workspace имеет доступ ко всем его проектам.
 
 ## REST API
 
@@ -150,8 +225,10 @@ GET .../tasks?status=TODO&priority=HIGH&page=0&size=20
 .\mvnw.cmd verify -Pintegration
 ```
 
-Профиль `integration` запускает `*IT`: применение миграций, полный CRUD, фильтры и пагинацию,
-проверки связей при чтении/изменении, каскадное удаление, Swagger и health.
+Профиль `integration` запускает `*IT`: миграции, CRUD, фильтры, каскадное удаление,
+регистрацию/login, проверку настоящих JWT, права ролей, изоляцию команд,
+конкурентное понижение администраторов, Swagger и health. Тестовый ключ генерируется в памяти;
+тестам не нужен ключ из `.env`.
 Если Docker недоступен, этот профиль завершится ошибкой, а не молча пропустит проверки.
 В GitHub Actions запускается именно `verify -Pintegration`.
 
@@ -165,7 +242,8 @@ $env:TEAMFLOW_TEST_DB_PASSWORD = 'your-test-password'
 ```
 
 **Указывай только одноразовую тестовую базу:** перед каждым интеграционным тестом таблицы
-рабочих пространств, проектов и задач очищаются. Обычные `DB_*` не выбирают базу для интеграционных тестов.
+пользователей, рабочих пространств, участников, проектов и задач очищаются.
+Обычные `DB_*` не выбирают базу для интеграционных тестов.
 
 Результат сборки: `target/teamflow-0.1.0-SNAPSHOT.jar`.
 
@@ -175,6 +253,10 @@ $env:TEAMFLOW_TEST_DB_PASSWORD = 'your-test-password'
 src/main/java/com/teamflow/
   common/       базовая сущность, пагинация, обработка ошибок
   config/       OpenAPI
+  auth/         регистрация, вход и DTO
+  security/     фильтры Spring Security, JWT, текущий пользователь
+  user/         пользователи и хеши паролей
+  membership/   роли и участники рабочих пространств
   workspace/    рабочие пространства: controller, service, repository, entity, DTO
   project/      проекты
   task/         задачи
@@ -183,9 +265,19 @@ src/test/java/com/teamflow/        unit, MVC и PostgreSQL integration tests
 ```
 
 Подробности: [архитектура](docs/architecture.md) и [roadmap](docs/roadmap.md).
-Следующий этап — пользователи, Spring Security, JWT и членство в рабочих пространствах.
-Роли `ADMIN` / `MEMBER` будут принадлежать членству, а не пользователю глобально.
+Следующий этап — участники проектов, исполнители задач, комментарии и история статусов.
+
+## Обновление базы с первого этапа
+
+Flyway применит `V2` поверх `V1` без удаления прежних проектов и задач.
+У старых workspace нет владельца: автоматически назначать их первому зарегистрированному
+пользователю небезопасно. Они остаются скрыты, пока владелец БД явно не добавит членство.
+Для новой учебной команды достаточно зарегистрироваться и создать новый workspace.
+Если нужно сохранить доступ к старым данным, пример ручного назначения администратора
+приведён в [архитектуре](docs/architecture.md#перенос-данных-из-этапа-1).
 
 Версии Java/Spring Boot и Springdoc выбраны по официальным таблицам совместимости:
 [Spring Boot](https://docs.spring.io/spring-boot/3.5/system-requirements.html),
 [Springdoc](https://springdoc.org/v2/).
+Авторизация использует стандартные компоненты [Spring Security JWT](https://docs.spring.io/spring-security/reference/6.5/servlet/oauth2/resource-server/jwt.html)
+и [PasswordEncoder](https://docs.spring.io/spring-security/reference/6.5/features/authentication/password-storage.html).

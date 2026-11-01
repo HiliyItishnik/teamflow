@@ -2,7 +2,11 @@ package com.teamflow.workspace;
 
 import com.teamflow.common.PageResponse;
 import com.teamflow.common.Pagination;
-import com.teamflow.common.ResourceNotFoundException;
+import com.teamflow.membership.WorkspaceAccess;
+import com.teamflow.membership.WorkspaceMember;
+import com.teamflow.membership.WorkspaceMemberRepository;
+import com.teamflow.membership.WorkspaceRole;
+import com.teamflow.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
@@ -11,13 +15,20 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class WorkspaceService {
     private final WorkspaceRepository repository;
+    private final WorkspaceMemberRepository members;
+    private final WorkspaceAccess access;
+    private final CurrentUser currentUser;
 
-    public WorkspaceService(WorkspaceRepository repository) {
+    public WorkspaceService(WorkspaceRepository repository, WorkspaceMemberRepository members,
+                            WorkspaceAccess access, CurrentUser currentUser) {
         this.repository = repository;
+        this.members = members;
+        this.access = access;
+        this.currentUser = currentUser;
     }
 
     public PageResponse<WorkspaceResponse> list(int page, int size) {
-        return PageResponse.from(repository.findAll(Pagination.of(page, size)).map(WorkspaceResponse::from));
+        return PageResponse.from(repository.findAllForUser(currentUser.id(), Pagination.of(page, size)).map(WorkspaceResponse::from));
     }
 
     public WorkspaceResponse get(UUID id) {
@@ -26,12 +37,15 @@ public class WorkspaceService {
 
     @Transactional
     public WorkspaceResponse create(WorkspaceRequest request) {
-        return WorkspaceResponse.from(repository.saveAndFlush(new Workspace(request.name(), request.description())));
+        var user = currentUser.get();
+        Workspace workspace = repository.saveAndFlush(new Workspace(request.name(), request.description()));
+        members.save(new WorkspaceMember(workspace, user, WorkspaceRole.ADMIN));
+        return WorkspaceResponse.from(workspace);
     }
 
     @Transactional
     public WorkspaceResponse update(UUID id, WorkspaceRequest request) {
-        Workspace workspace = requireWorkspace(id);
+        Workspace workspace = access.lockAndRequireAdmin(id);
         workspace.update(request.name(), request.description());
         repository.flush();
         return WorkspaceResponse.from(workspace);
@@ -39,11 +53,13 @@ public class WorkspaceService {
 
     @Transactional
     public void delete(UUID id) {
-        repository.delete(requireWorkspace(id));
+        Workspace workspace = access.lockAndRequireAdmin(id);
+        repository.deleteWithDependents(workspace.getId());
     }
 
     public Workspace requireWorkspace(UUID id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Workspace not found: " + id));
+        return access.requireMember(id).getWorkspace();
     }
+
+    public Workspace requireAdminWorkspace(UUID id) { return access.requireAdmin(id); }
 }

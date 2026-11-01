@@ -20,11 +20,20 @@ jobs:
           ./mvnw -B -ntp verify -Pintegration
       - name: Smoke test Docker Compose
         run: |
+          export JWT_SECRET="$(openssl rand -base64 32)"
           docker compose up --build -d
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 --retry-max-time 120 --connect-timeout 2 --max-time 5 http://localhost:8080/actuator/health
+          auth_response=$(curl --fail --silent --show-error -H 'Content-Type: application/json' --data '{"email":"smoke@example.test","displayName":"CI","password":"CI-test-password-123"}' http://localhost:8080/api/v1/auth/register)
+          access_token=$(printf '%s' "$auth_response" | jq -er '.accessToken')
+          curl --fail --silent --show-error --output /dev/null -H "Authorization: Bearer $access_token" http://localhost:8080/api/v1/auth/me
+          curl --fail --silent --show-error --output /dev/null -H "Authorization: Bearer $access_token" -H 'Content-Type: application/json' --data '{"name":"CI workspace"}' http://localhost:8080/api/v1/workspaces
       - name: Show Compose logs on failure
         if: failure()
+        env:
+          JWT_SECRET: unused-for-log-inspection
         run: docker compose logs --no-color
       - name: Stop Compose services
         if: always()
+        env:
+          JWT_SECRET: unused-for-container-cleanup
         run: docker compose down

@@ -31,13 +31,14 @@ public class ProjectService {
 
     @Transactional
     public ProjectResponse create(UUID workspaceId, ProjectRequest request) {
-        Project project = new Project(workspaces.requireWorkspace(workspaceId), request.name(), request.description());
+        Project project = new Project(workspaces.requireAdminWorkspace(workspaceId), request.name(), request.description());
         return ProjectResponse.from(repository.saveAndFlush(project));
     }
 
     @Transactional
     public ProjectResponse update(UUID workspaceId, UUID projectId, ProjectRequest request) {
         Project project = requireProject(workspaceId, projectId);
+        workspaces.requireAdminWorkspace(workspaceId);
         project.update(request.name(), request.description());
         repository.flush();
         return ProjectResponse.from(project);
@@ -45,10 +46,13 @@ public class ProjectService {
 
     @Transactional
     public void delete(UUID workspaceId, UUID projectId) {
-        repository.delete(requireProject(workspaceId, projectId));
+        Project project = requireProject(workspaceId, projectId);
+        workspaces.requireAdminWorkspace(workspaceId);
+        repository.delete(project);
     }
 
     public Project requireProject(UUID workspaceId, UUID projectId) {
+        workspaces.requireWorkspace(workspaceId);
         return repository.findByIdAndWorkspaceId(projectId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found in workspace: " + projectId));
     }
