@@ -1,0 +1,67 @@
+@baseUrl = http://localhost:8080
+
+### 1. Создать рабочее пространство
+POST {{baseUrl}}/api/v1/workspaces
+Content-Type: application/json
+
+{
+  "name": "Backend team",
+  "description": "Учебные проекты на Java"
+}
+
+> {% client.global.set("workspaceId", response.body.id); %}
+
+### 2. Создать проект
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
+Content-Type: application/json
+
+{
+  "name": "TeamFlow",
+  "description": "Система управления командными проектами"
+}
+
+> {% client.global.set("projectId", response.body.id); %}
+
+### 3. Создать задачу
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks
+Content-Type: application/json
+
+{
+  "title": "Реализовать REST API",
+  "description": "CRUD, DTO, валидация и обработка ошибок",
+  "status": "TODO",
+  "priority": "HIGH",
+  "dueDate": "2026-12-31"
+}
+
+> {% client.global.set("taskId", response.body.id); %}
+
+### 4. Список задач с фильтрами и пагинацией
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?status=TODO&priority=HIGH&page=0&size=20
+
+### 5. Полное обновление изменяемых полей задачи
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+Content-Type: application/json
+
+{
+  "title": "Реализовать REST API",
+  "description": "Первый этап готов",
+  "status": "DONE",
+  "priority": "HIGH",
+  "dueDate": "2026-12-31"
+}
+
+### 6. Получить задачу
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+
+### 7. Список проектов
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects?page=0&size=20
+
+### 8. Список рабочих пространств
+GET {{baseUrl}}/api/v1/workspaces?page=0&size=20
+
+### 9. Health
+GET {{baseUrl}}/actuator/health
+
+### 10. Удаление созданной задачи
+DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
