@@ -179,6 +179,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
         String workspace = workspace(owner, "Team");
         String project = project(owner, workspace);
         addMember(owner, workspace, member, "MEMBER");
+        call(HttpMethod.POST, project + "/members", owner, Map.of("userId", member.id())).andExpect(status().isCreated());
         call(HttpMethod.GET, workspace, member, null).andExpect(status().isOk());
         call(HttpMethod.GET, project, member, null).andExpect(status().isOk());
         call(HttpMethod.GET, workspace + "/members?size=1", member, null).andExpect(status().isOk())

@@ -4,6 +4,11 @@ import com.teamflow.common.PageResponse;
 import com.teamflow.common.Pagination;
 import com.teamflow.common.ResourceNotFoundException;
 import com.teamflow.workspace.WorkspaceService;
+import com.teamflow.membership.WorkspaceAccess;
+import com.teamflow.membership.WorkspaceRole;
+import com.teamflow.projectmember.ProjectMember;
+import com.teamflow.projectmember.ProjectMemberRepository;
+import com.teamflow.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
@@ -13,16 +18,26 @@ import java.util.UUID;
 public class ProjectService {
     private final ProjectRepository repository;
     private final WorkspaceService workspaces;
+    private final WorkspaceAccess access;
+    private final ProjectMemberRepository members;
+    private final CurrentUser currentUser;
 
-    public ProjectService(ProjectRepository repository, WorkspaceService workspaces) {
+    public ProjectService(ProjectRepository repository, WorkspaceService workspaces, WorkspaceAccess access,
+                          ProjectMemberRepository members, CurrentUser currentUser) {
         this.repository = repository;
         this.workspaces = workspaces;
+        this.access = access;
+        this.members = members;
+        this.currentUser = currentUser;
     }
 
     public PageResponse<ProjectResponse> list(UUID workspaceId, int page, int size) {
-        workspaces.requireWorkspace(workspaceId);
-        return PageResponse.from(repository.findAllByWorkspaceId(workspaceId, Pagination.of(page, size))
-                .map(ProjectResponse::from));
+        var membership = access.requireMember(workspaceId);
+        var pageable = Pagination.of(page, size);
+        var result = membership.getRole() == WorkspaceRole.ADMIN
+                ? repository.findAllByWorkspaceId(workspaceId, pageable)
+                : repository.findAllForUser(workspaceId, membership.getUser().getId(), pageable);
+        return PageResponse.from(result.map(ProjectResponse::from));
     }
 
     public ProjectResponse get(UUID workspaceId, UUID projectId) {
@@ -32,7 +47,9 @@ public class ProjectService {
     @Transactional
     public ProjectResponse create(UUID workspaceId, ProjectRequest request) {
         Project project = new Project(workspaces.requireAdminWorkspace(workspaceId), request.name(), request.description());
-        return ProjectResponse.from(repository.saveAndFlush(project));
+        repository.saveAndFlush(project);
+        members.save(new ProjectMember(project, currentUser.get()));
+        return ProjectResponse.from(project);
     }
 
     @Transactional
@@ -48,12 +65,17 @@ public class ProjectService {
     public void delete(UUID workspaceId, UUID projectId) {
         Project project = requireProject(workspaceId, projectId);
         workspaces.requireAdminWorkspace(workspaceId);
-        repository.delete(project);
+        repository.deleteWithDependents(project.getId());
     }
 
     public Project requireProject(UUID workspaceId, UUID projectId) {
-        workspaces.requireWorkspace(workspaceId);
-        return repository.findByIdAndWorkspaceId(projectId, workspaceId)
+        var membership = access.requireMember(workspaceId);
+        Project project = repository.findByIdAndWorkspaceId(projectId, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found in workspace: " + projectId));
+        if (membership.getRole() != WorkspaceRole.ADMIN
+                && !members.existsByProjectIdAndUserId(projectId, membership.getUser().getId())) {
+            throw new ResourceNotFoundException("Project not found in workspace: " + projectId);
+        }
+        return project;
     }
 }

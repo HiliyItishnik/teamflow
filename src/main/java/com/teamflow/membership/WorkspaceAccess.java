@@ -39,4 +39,10 @@ public class WorkspaceAccess {
         requireAdmin(workspaceId);
         return workspace;
     }
+
+    public void lockAndRequireMember(UUID workspaceId) {
+        workspaces.findByIdForUpdate(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace not found: " + workspaceId));
+        requireMember(workspaceId);
+    }
 }

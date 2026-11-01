@@ -2,6 +2,7 @@ package com.teamflow.task;
 
 import com.teamflow.common.BaseEntity;
 import com.teamflow.project.Project;
+import com.teamflow.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -35,6 +36,10 @@ public class Task extends BaseEntity {
 
     private LocalDate dueDate;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignee_id")
+    private User assignee;
+
     protected Task() {}
 
     public Task(Project project, String title, String description, TaskStatus status,
@@ -57,4 +62,6 @@ public class Task extends BaseEntity {
     public TaskStatus getStatus() { return status; }
     public TaskPriority getPriority() { return priority; }
     public LocalDate getDueDate() { return dueDate; }
+    public User getAssignee() { return assignee; }
+    public void assignTo(User user) { this.assignee = user; }
 }

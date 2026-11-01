@@ -98,10 +98,6 @@ Authorization: Bearer {{accessToken}}
 ### 9. Health
 GET {{baseUrl}}/actuator/health
 
-### 10. Удаление созданной задачи
-DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
-Authorization: Bearer {{accessToken}}
-
 ### Зарегистрировать второго пользователя (токен владельца сохраняется)
 POST {{baseUrl}}/api/v1/auth/register
 Content-Type: application/json
@@ -124,6 +120,13 @@ Content-Type: application/json
   "role": "MEMBER"
 }
 
+### Владелец добавляет участника в конкретный проект
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/members
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": "{{memberId}}"}
+
 ### Участник читает проекты своей команды
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
 Authorization: Bearer {{memberToken}}
@@ -135,10 +138,53 @@ Content-Type: application/json
 
 {"name": "Forbidden project"}
 
+### Назначить исполнителя задачи
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/assignee
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": "{{memberId}}"}
+
+### Задачи исполнителя
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?assigneeId={{memberId}}
+Authorization: Bearer {{memberToken}}
+
+### Участник добавляет комментарий
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{"body": "Проверил API, всё работает."}
+
+> {% client.global.set("commentId", response.body.id); %}
+
+### Автор редактирует комментарий
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments/{{commentId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{"body": "Проверил API и назначение исполнителя."}
+
+### Комментарии задачи
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments?page=0&size=20
+Authorization: Bearer {{accessToken}}
+
+### История статусов — включает создание и прежнее изменение TODO → DONE
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/history?page=0&size=20
+Authorization: Bearer {{accessToken}}
+
 ### Список участников
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members
 Authorization: Bearer {{accessToken}}
 
 ### Владелец удаляет участника; его прежний токен больше не даёт доступ к команде
 DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members/{{memberId}}
+Authorization: Bearer {{accessToken}}
+
+### Исполнитель снят автоматически, комментарии сохранены
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+Authorization: Bearer {{accessToken}}
+
+### Очистка: удалить задачу вместе с комментариями и историей
+DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
 Authorization: Bearer {{accessToken}}

@@ -3,6 +3,10 @@ package com.teamflow.task;
 import com.teamflow.common.ResourceNotFoundException;
 import com.teamflow.project.Project;
 import com.teamflow.project.ProjectService;
+import com.teamflow.projectmember.ProjectMemberRepository;
+import com.teamflow.history.TaskStatusChangeRepository;
+import com.teamflow.security.CurrentUser;
+import com.teamflow.membership.WorkspaceAccess;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -26,6 +30,10 @@ class TaskServiceTest {
     @Mock TaskRepository repository;
     @Mock ProjectService projects;
     @Mock Project project;
+    @Mock ProjectMemberRepository members;
+    @Mock TaskStatusChangeRepository history;
+    @Mock CurrentUser currentUser;
+    @Mock WorkspaceAccess access;
     @InjectMocks TaskService service;
 
     private final UUID workspaceId = UUID.randomUUID();

@@ -1,6 +1,7 @@
 package com.teamflow.task;
 
 import com.teamflow.common.PageResponse;
+import com.teamflow.history.StatusChangeResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -34,9 +35,10 @@ public class TaskController {
     public PageResponse<TaskResponse> list(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) TaskPriority priority,
+            @RequestParam(required = false) UUID assigneeId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return service.list(workspaceId, projectId, status, priority, page, size);
+        return service.list(workspaceId, projectId, status, priority, assigneeId, page, size);
     }
 
     @GetMapping("/{taskId}")
@@ -63,5 +65,18 @@ public class TaskController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId, @PathVariable UUID taskId) {
         service.delete(workspaceId, projectId, taskId);
+    }
+
+    @PutMapping("/{taskId}/assignee")
+    public TaskResponse assign(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
+                               @PathVariable UUID taskId, @Valid @RequestBody AssignmentRequest request) {
+        return service.assign(workspaceId, projectId, taskId, request);
+    }
+
+    @GetMapping("/{taskId}/history")
+    public PageResponse<StatusChangeResponse> history(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
+            @PathVariable UUID taskId, @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return service.history(workspaceId, projectId, taskId, page, size);
     }
 }
