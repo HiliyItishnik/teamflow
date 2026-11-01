@@ -1,0 +1,140 @@
+# Демонстрация TeamFlow
+
+Демо рассчитано на 5–7 минут показа backend через Swagger UI и PowerShell.
+Нужны Docker с Linux containers и Windows PowerShell 5.1 либо PowerShell 7.
+Java устанавливать не требуется при запуске приложения в Docker.
+
+## Подготовка
+
+Из корня репозитория:
+
+```powershell
+.\scripts\init-env.ps1
+docker compose up --build -d
+.\scripts\demo.ps1
+```
+
+На Linux/macOS сначала настрой `.env` и `JWT_SECRET` по README, затем выполни
+`docker compose up --build -d` и `pwsh -File ./scripts/demo.ps1`.
+Если приложение уже работает из IDE или JAR, достаточно запустить `demo.ps1`.
+
+Скрипт ждёт health до 120 секунд и выполняет сценарий через публичный REST API.
+Для другого локального порта: `./scripts/demo.ps1 -BaseUrl http://localhost:8081`.
+Параметр `-WaitSeconds 180` увеличит время ожидания на медленной машине.
+Удалённые адреса не принимаются: это локальное демо, которое создаёт данные.
+
+При успехе появятся семь этапов и сообщение `Успешно: … HTTP-проверок`.
+Любой неожиданный HTTP-код или результат останавливает скрипт с ошибкой.
+Демо не сбрасывает БД и не меняет существующие команды. Повторный запуск создаёт
+новую команду и три новые учётные записи с уникальными email и случайными паролями.
+Посторонний пользователь нужен только для проверки изоляции.
+
+В созданной команде останутся:
+
+- Администратор и участник с ролью `MEMBER`.
+- Проект «Релиз TeamFlow», доступный обоим, и «Планирование», доступный администратору.
+- Три задачи: завершённая с комментарием и историей, назначенная участнику и свободная.
+- История первой задачи `TODO → IN_PROGRESS → DONE` с авторами изменений.
+
+Скрипт сохраняет отдельный `target/demo-<id>.json` с UUID, паролями и access token двух участников.
+Он исключён из Git. Не публикуй этот файл и не показывай его целиком при записи экрана.
+`-NoSessionFile` отключает сохранение учётных данных; CI использует этот параметр.
+
+## Показать рабочий сценарий
+
+Загрузи последнюю локальную сессию, не выводя её содержимое:
+
+```powershell
+$sessionFile = Get-ChildItem ./target/demo-*.json | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$demo = Get-Content -LiteralPath $sessionFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+$adminHeaders = @{Authorization = "Bearer $($demo.admin.accessToken)"}
+$memberHeaders = @{Authorization = "Bearer $($demo.member.accessToken)"}
+```
+
+1. **Архитектура, 1 минута.** Открой [схему](architecture.md). Объясни: один монолит,
+   роли внутри workspace, отдельное членство в проектах, внешние ключи и сервисные транзакции.
+2. **Авторизация, 1 минута.** Открой `http://localhost:8080/swagger-ui/index.html`.
+   В Windows команда `$demo.admin.accessToken | Set-Clipboard` копирует токен без вывода в терминал.
+   В **Authorize** вставь только токен, без `Bearer`. UUID бери из переменных `$demo.workspaceId`,
+   `$demo.projectId`, `$demo.taskIds[0]` — это несекретные идентификаторы.
+3. **Задачи, 1 минута.** Вызови список задач проекта. Сравни все задачи и фильтр по исполнителю.
+   Покажи `page=0&size=1`: ответ содержит `content`, `totalElements` и `totalPages`.
+4. **История и комментарии, 1 минута.** Для первой задачи вызови `/comments` и `/history`.
+   История сохраняет создание администратором и два перехода участником;
+   повторное сохранение `DONE` не создаёт событие.
+5. **Права, 1–2 минуты.** Замени токен в Authorize на `$demo.member.accessToken`.
+   Участник видит один проект. Запрос проекта `$demo.privateProjectId` вернёт `404`,
+   попытка создать проект — `403`. Объясни различие: скрытый ресурс и недостаточная роль.
+6. **Качество, 1 минута.** Открой последний зелёный запуск GitHub Actions и
+   [состав проверок](testing.md). Покажи тестирование конкурентных изменений и миграции `V3`.
+
+Те же данные можно посмотреть из PowerShell:
+
+```powershell
+# Список задач от лица участника
+Invoke-RestMethod -Uri "$($demo.baseUrl)$($demo.tasksPath)" -Headers $memberHeaders
+
+# Только назначенные участнику задачи
+$filterUrl = "$($demo.baseUrl)$($demo.tasksPath)?assigneeId=$($demo.member.userId)"
+Invoke-RestMethod -Uri $filterUrl -Headers $memberHeaders
+
+# История завершённой задачи
+$historyUrl = "$($demo.baseUrl)$($demo.tasksPath)/$($demo.taskIds[0])/history"
+(Invoke-RestMethod -Uri $historyUrl -Headers $adminHeaders).content |
+    Format-Table eventType, fromStatus, toStatus, actorName, changedAt
+```
+
+Токен действует 30 минут. Если получил `401`, выполни вход заново и обнови нужный заголовок:
+
+```powershell
+$body = @{email = $demo.admin.email; password = $demo.admin.password} | ConvertTo-Json
+$auth = Invoke-RestMethod -Method Post -Uri "$($demo.baseUrl)/api/v1/auth/login" `
+    -ContentType 'application/json; charset=utf-8' -Body $body
+$adminHeaders = @{Authorization = "Bearer $($auth.accessToken)"}
+# Для Swagger скопируй $auth.accessToken вместо прежнего токена
+```
+
+## Какие проверки выполняет скрипт
+
+| Сценарий | Ожидание |
+| --- | --- |
+| Health, OpenAPI, регистрация, login и me | API готов; схема Bearer и пользователь корректны |
+| Запрос списка без токена | `401` и ProblemDetail |
+| MEMBER создаёт проект | `403` |
+| Чужая команда или проект без членства | `404` |
+| Удаление последнего ADMIN | `409` |
+| Задача с пустым названием | `400` |
+| Назначение, фильтры и две страницы задач | Точные UUID и количество записей |
+| Автор редактирует комментарий; ADMIN пытается переписать его | Успех автора; `403` для ADMIN |
+| Два перехода статуса и повторный PUT | Ровно три события с правильными авторами |
+| Удаление участника проекта | Исполнитель сброшен, доступ отозван, комментарий и история сохранены |
+
+В конце участник возвращается в проект и получает вторую задачу для дальнейшего показа.
+Демо проверяет последовательный пользовательский сценарий; гонки и миграции проверяют JUnit-тесты.
+
+## Завершение
+
+Для остановки приложения сохрани данные через `docker compose down` без удаления volume.
+Чтобы удалить только созданную демо-команду, сначала проверь её UUID, затем выполни:
+
+```powershell
+$demo.workspaceId
+# Удаляет эту команду, её проекты, задачи, комментарии и историю
+Invoke-RestMethod -Method Delete -Uri "$($demo.baseUrl)$($demo.workspacePath)" -Headers $adminHeaders
+```
+
+Демонстрационные учётные записи сохранятся: API удаления пользователей пока отсутствует.
+Удаление локального JSON не удаляет данные и не отзывает JWT. `mvnw clean` удаляет `target/`,
+включая локальные сессии, поэтому при необходимости удали команду до очистки сборки.
+
+## Описание для портфолио
+
+> TeamFlow — REST API управления командными проектами на Java 21 и Spring Boot.
+> Реализованы JWT-аутентификация, роли на уровне команды, участники проектов,
+> задачи с исполнителями, комментарии и транзакционная история статусов.
+> PostgreSQL и Flyway обеспечивают целостность и обновление схемы;
+> интеграционные тесты проверяют изоляцию команд, конкурентные изменения и миграции.
+> Docker Compose и GitHub Actions воспроизводят запуск и демонстрационный сценарий.
+
+Не заявляй отдельный frontend, уведомления, email-приглашения или публичный deployment:
+они перечислены как дальнейшие расширения в [roadmap](roadmap.md).
