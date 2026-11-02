@@ -37,7 +37,7 @@ public class ProjectMembershipService {
     @Transactional
     public UserResponse add(UUID workspaceId, UUID projectId, AddProjectMemberRequest request) {
         access.lockAndRequireAdmin(workspaceId);
-        var project = projects.requireProject(workspaceId, projectId);
+        var project = projects.requireWritableProject(workspaceId, projectId);
         var workspaceMember = workspaceMembers.findByWorkspaceIdAndUserId(workspaceId, request.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace member not found."));
         if (members.existsByProjectIdAndUserId(projectId, request.userId())) {
@@ -50,7 +50,7 @@ public class ProjectMembershipService {
     @Transactional
     public void remove(UUID workspaceId, UUID projectId, UUID userId) {
         access.lockAndRequireAdmin(workspaceId);
-        projects.requireProject(workspaceId, projectId);
+        projects.requireWritableProject(workspaceId, projectId);
         var member = members.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project member not found."));
         members.delete(member);

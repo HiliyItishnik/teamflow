@@ -26,7 +26,7 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
     @BeforeEach
     void cleanDatabase() throws Exception {
         clearDatabase();
-        String body = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        String body = performWithCurrentEtag(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", "owner@example.test", "displayName", "Owner", "password", "Owner-password-123"))))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         String token = json.readTree(body).get("accessToken").asText();
@@ -46,25 +46,25 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
         JsonNode task = create(projectPath + "/tasks", taskBody("Build API", "TODO", "HIGH"));
         String taskPath = projectPath + "/tasks/" + task.get("id").asText();
 
-        mvc.perform(get(workspacePath)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Backend team"));
-        mvc.perform(get(projectPath)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("TeamFlow"));
-        mvc.perform(get(taskPath)).andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Build API"));
+        performWithCurrentEtag(get(workspacePath)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Backend team"));
+        performWithCurrentEtag(get(projectPath)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("TeamFlow"));
+        performWithCurrentEtag(get(taskPath)).andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Build API"));
 
-        mvc.perform(put(workspacePath).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Team\"}"))
+        performWithCurrentEtag(put(workspacePath).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Team\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.description").doesNotExist());
-        mvc.perform(put(projectPath).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"TeamFlow API\"}"))
+        performWithCurrentEtag(put(projectPath).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"TeamFlow API\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("TeamFlow API"));
-        mvc.perform(put(taskPath).contentType(MediaType.APPLICATION_JSON)
+        performWithCurrentEtag(put(taskPath).contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(taskBody("Build API", "DONE", "MEDIUM"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DONE"));
-        mvc.perform(get(taskPath)).andExpect(jsonPath("$.status").value("DONE"));
+        performWithCurrentEtag(get(taskPath)).andExpect(jsonPath("$.status").value("DONE"));
 
-        mvc.perform(delete(taskPath)).andExpect(status().isNoContent());
-        mvc.perform(get(taskPath)).andExpect(status().isNotFound());
-        mvc.perform(delete(projectPath)).andExpect(status().isNoContent());
-        mvc.perform(get(projectPath)).andExpect(status().isNotFound());
-        mvc.perform(delete(workspacePath)).andExpect(status().isNoContent());
-        mvc.perform(get(workspacePath)).andExpect(status().isNotFound());
+        performWithCurrentEtag(delete(taskPath)).andExpect(status().isNoContent());
+        performWithCurrentEtag(get(taskPath)).andExpect(status().isNotFound());
+        performWithCurrentEtag(delete(projectPath)).andExpect(status().isNoContent());
+        performWithCurrentEtag(get(projectPath)).andExpect(status().isNotFound());
+        performWithCurrentEtag(delete(workspacePath)).andExpect(status().isNoContent());
+        performWithCurrentEtag(get(workspacePath)).andExpect(status().isNotFound());
     }
 
     @Test
@@ -79,20 +79,20 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
         create(secondProject + "/tasks", taskBody("Other project", "TODO", "HIGH"));
 
         String filtered = firstProject + "/tasks?status=TODO&priority=HIGH&size=1";
-        String firstPage = mvc.perform(get(filtered)).andExpect(status().isOk())
+        String firstPage = performWithCurrentEtag(get(filtered)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2))
                 .andExpect(jsonPath("$.totalPages").value(2))
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.content[0].status").value("TODO"))
                 .andReturn().getResponse().getContentAsString();
-        String secondPage = mvc.perform(get(filtered + "&page=1")).andExpect(status().isOk())
+        String secondPage = performWithCurrentEtag(get(filtered + "&page=1")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(1))
                 .andReturn().getResponse().getContentAsString();
         assertThat(json.readTree(firstPage).at("/content/0/id").asText())
                 .isNotEqualTo(json.readTree(secondPage).at("/content/0/id").asText());
-        mvc.perform(get(firstProject + "/tasks?page=20")).andExpect(status().isOk())
+        performWithCurrentEtag(get(firstProject + "/tasks?page=20")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(0));
-        mvc.perform(get(workspacePath + "/projects?size=1")).andExpect(status().isOk())
+        performWithCurrentEtag(get(workspacePath + "/projects?size=1")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2));
     }
 
@@ -107,23 +107,23 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
         String wrongWorkspaceTask = wrongWorkspaceProject + "/tasks/" + task.get("id").asText();
         String wrongProjectTask = secondProject + "/tasks/" + task.get("id").asText();
 
-        mvc.perform(get(wrongWorkspaceProject)).andExpect(status().isNotFound());
-        mvc.perform(delete(wrongWorkspaceProject)).andExpect(status().isNotFound());
-        mvc.perform(put(wrongWorkspaceProject).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Hijacked\"}"))
+        performWithCurrentEtag(get(wrongWorkspaceProject)).andExpect(status().isNotFound());
+        performWithCurrentEtag(delete(wrongWorkspaceProject)).andExpect(status().isNotFound());
+        performWithCurrentEtag(put(wrongWorkspaceProject).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Hijacked\"}"))
                 .andExpect(status().isNotFound());
-        mvc.perform(get(wrongWorkspaceProject + "/tasks")).andExpect(status().isNotFound());
-        mvc.perform(post(wrongWorkspaceProject + "/tasks").contentType(MediaType.APPLICATION_JSON)
+        performWithCurrentEtag(get(wrongWorkspaceProject + "/tasks")).andExpect(status().isNotFound());
+        performWithCurrentEtag(post(wrongWorkspaceProject + "/tasks").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(taskBody("Bad", "TODO", "LOW"))))
                 .andExpect(status().isNotFound());
 
         for (String path : new String[]{wrongWorkspaceTask, wrongProjectTask}) {
-            mvc.perform(get(path)).andExpect(status().isNotFound());
-            mvc.perform(delete(path)).andExpect(status().isNotFound());
-            mvc.perform(put(path).contentType(MediaType.APPLICATION_JSON)
+            performWithCurrentEtag(get(path)).andExpect(status().isNotFound());
+            performWithCurrentEtag(delete(path)).andExpect(status().isNotFound());
+            performWithCurrentEtag(put(path).contentType(MediaType.APPLICATION_JSON)
                             .content(json.writeValueAsString(taskBody("Hijacked", "DONE", "LOW"))))
                     .andExpect(status().isNotFound());
         }
-        mvc.perform(get(firstProject + "/tasks/" + task.get("id").asText()))
+        performWithCurrentEtag(get(firstProject + "/tasks/" + task.get("id").asText()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Private task"));
     }
 
@@ -138,38 +138,38 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
         create(keptProject + "/tasks", taskBody("Keep", "TODO", "HIGH"));
         create(otherProject + "/tasks", taskBody("Other", "TODO", "HIGH"));
 
-        mvc.perform(delete(deletedProject)).andExpect(status().isNoContent());
+        performWithCurrentEtag(delete(deletedProject)).andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM tasks", Long.class)).isEqualTo(2);
-        mvc.perform(delete(firstWorkspace)).andExpect(status().isNoContent());
+        performWithCurrentEtag(delete(firstWorkspace)).andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM projects", Long.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM tasks", Long.class)).isEqualTo(1);
-        mvc.perform(get(otherProject + "/tasks")).andExpect(status().isOk())
+        performWithCurrentEtag(get(otherProject + "/tasks")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].title").value("Other"));
     }
 
     @Test
     void missingParentReturnsNotFoundEvenForLists() throws Exception {
-        mvc.perform(get(ROOT + "/" + UUID.randomUUID() + "/projects")).andExpect(status().isNotFound());
+        performWithCurrentEtag(get(ROOT + "/" + UUID.randomUUID() + "/projects")).andExpect(status().isNotFound());
         String workspace = workspacePath("Team");
-        mvc.perform(get(workspace + "/projects/" + UUID.randomUUID() + "/tasks"))
+        performWithCurrentEtag(get(workspace + "/projects/" + UUID.randomUUID() + "/tasks"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void databaseConstraintsAndMigrationAreApplied() {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Long.class))
-                .isEqualTo(3);
+                .isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.table_constraints "
-                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(11);
+                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(13);
     }
 
     @Test
     void healthAndOpenApiAreAvailable() throws Exception {
-        mvc.perform(get("/actuator/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
-        mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+        performWithCurrentEtag(get("/actuator/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
+        performWithCurrentEtag(get("/v3/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("TeamFlow API"))
                 .andExpect(jsonPath("$.paths['/api/v1/workspaces']").exists());
-        mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
+        performWithCurrentEtag(get("/swagger-ui/index.html")).andExpect(status().isOk());
     }
 
     private String workspacePath(String name) throws Exception {
@@ -182,7 +182,7 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
     }
 
     private JsonNode create(String path, Object body) throws Exception {
-        String response = mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
+        String response = performWithCurrentEtag(post(path).contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(body)))
                 .andExpect(status().isCreated())
                 .andExpect(header().exists("Location"))

@@ -49,5 +49,24 @@ abstract class PostgresIntegrationTest {
     @Autowired protected JdbcTemplate jdbc;
     @Autowired protected WebApplicationContext context;
 
+    // Existing business scenarios submit the version current at request construction time.
+    // ReliabilityApiIT uses raw mvc.perform to exercise missing/stale/foreign preconditions.
+    protected org.springframework.test.web.servlet.ResultActions performWithCurrentEtag(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder) throws Exception {
+        var request = builder.buildRequest(context.getServletContext());
+        if (java.util.Set.of("PUT", "DELETE").contains(request.getMethod()) && request.getHeader("If-Match") == null) {
+            var matcher = java.util.regex.Pattern.compile("/(workspaces|projects|tasks|comments)/([0-9a-f-]{36})(?:/(?:assignee|archive))?$")
+                    .matcher(request.getRequestURI());
+            if (matcher.find()) {
+                String table = matcher.group(1).equals("comments") ? "task_comments" : matcher.group(1);
+                var versions = jdbc.queryForList("SELECT version FROM " + table + " WHERE id = ?", Long.class,
+                        java.util.UUID.fromString(matcher.group(2)));
+                if (!versions.isEmpty()) builder.header("If-Match", com.teamflow.common.VersionCondition.etag(
+                        java.util.UUID.fromString(matcher.group(2)), versions.getFirst()));
+            }
+        }
+        return mvc.perform(builder);
+    }
+
     protected void clearDatabase() { jdbc.execute("TRUNCATE TABLE workspaces, users CASCADE"); }
 }

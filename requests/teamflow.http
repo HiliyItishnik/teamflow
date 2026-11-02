@@ -1,4 +1,7 @@
 @baseUrl = http://localhost:8080
+# Для новой операции задай новый UUID; для повтора оставь прежний ключ.
+@taskRequestKey = 26e70a2e-088e-44a1-8a5e-55e3f48b2d64
+@commentRequestKey = 447e9d68-72f5-4cbf-910b-e864ad9b584c
 
 ### Зарегистрировать владельца (один раз для каждого email)
 POST {{baseUrl}}/api/v1/auth/register
@@ -37,7 +40,7 @@ Content-Type: application/json
   "description": "Учебные проекты на Java"
 }
 
-> {% client.global.set("workspaceId", response.body.id); %}
+> {% client.global.set("workspaceEtag", response.headers.valueOf("ETag")); client.global.set("workspaceId", response.body.id); %}
 
 ### 2. Создать проект
 POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects
@@ -49,10 +52,11 @@ Content-Type: application/json
   "description": "Система управления командными проектами"
 }
 
-> {% client.global.set("projectId", response.body.id); %}
+> {% client.global.set("projectEtag", response.headers.valueOf("ETag")); client.global.set("projectId", response.body.id); %}
 
 ### 3. Создать задачу
 POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks
+Idempotency-Key: {{taskRequestKey}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -64,7 +68,7 @@ Content-Type: application/json
   "dueDate": "2026-12-31"
 }
 
-> {% client.global.set("taskId", response.body.id); %}
+> {% client.global.set("taskEtag", response.headers.valueOf("ETag")); client.global.set("taskId", response.body.id); %}
 
 ### 4. Список задач с фильтрами и пагинацией
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?status=TODO&priority=HIGH&page=0&size=20
@@ -72,6 +76,7 @@ Authorization: Bearer {{accessToken}}
 
 ### 5. Полное обновление изменяемых полей задачи
 PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+If-Match: {{taskEtag}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -83,9 +88,13 @@ Content-Type: application/json
   "dueDate": "2026-12-31"
 }
 
+> {% client.global.set("taskEtag", response.headers.valueOf("ETag")); %}
+
 ### 6. Получить задачу
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
 Authorization: Bearer {{accessToken}}
+
+> {% client.global.set("taskEtag", response.headers.valueOf("ETag")); %}
 
 ### 7. Список проектов
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects?page=0&size=20
@@ -138,12 +147,17 @@ Content-Type: application/json
 
 {"name": "Forbidden project"}
 
+> {% client.global.set("projectEtag", response.headers.valueOf("ETag")); %}
+
 ### Назначить исполнителя задачи
 PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/assignee
+If-Match: {{taskEtag}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {"userId": "{{memberId}}"}
+
+> {% client.global.set("taskEtag", response.headers.valueOf("ETag")); %}
 
 ### Задачи исполнителя
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?assigneeId={{memberId}}
@@ -151,19 +165,23 @@ Authorization: Bearer {{memberToken}}
 
 ### Участник добавляет комментарий
 POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments
+Idempotency-Key: {{commentRequestKey}}
 Authorization: Bearer {{memberToken}}
 Content-Type: application/json
 
 {"body": "Проверил API, всё работает."}
 
-> {% client.global.set("commentId", response.body.id); %}
+> {% client.global.set("commentEtag", response.headers.valueOf("ETag")); client.global.set("commentId", response.body.id); %}
 
 ### Автор редактирует комментарий
 PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments/{{commentId}}
+If-Match: {{commentEtag}}
 Authorization: Bearer {{memberToken}}
 Content-Type: application/json
 
 {"body": "Проверил API и назначение исполнителя."}
+
+> {% client.global.set("commentEtag", response.headers.valueOf("ETag")); %}
 
 ### Комментарии задачи
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}/comments?page=0&size=20
@@ -185,6 +203,39 @@ Authorization: Bearer {{accessToken}}
 GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
 Authorization: Bearer {{accessToken}}
 
+> {% client.global.set("taskEtag", response.headers.valueOf("ETag")); %}
+
 ### Очистка: удалить задачу вместе с комментариями и историей
 DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks/{{taskId}}
+If-Match: {{taskEtag}}
 Authorization: Bearer {{accessToken}}
+
+### Получить актуальную версию проекта перед архивированием
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}
+Authorization: Bearer {{accessToken}}
+
+> {% client.global.set("projectEtag", response.headers.valueOf("ETag")); %}
+
+### Архивировать проект без удаления данных
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/archive
+Authorization: Bearer {{accessToken}}
+If-Match: {{projectEtag}}
+Content-Type: application/json
+
+{"archived":true}
+
+> {% client.global.set("projectEtag", response.headers.valueOf("ETag")); %}
+
+### Список архивных проектов
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects?archived=true
+Authorization: Bearer {{accessToken}}
+
+### Восстановить проект
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/archive
+Authorization: Bearer {{accessToken}}
+If-Match: {{projectEtag}}
+Content-Type: application/json
+
+{"archived":false}
+
+> {% client.global.set("projectEtag", response.headers.valueOf("ETag")); %}

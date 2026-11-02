@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -32,9 +33,10 @@ public class ProjectController {
 
     @GetMapping
     public PageResponse<ProjectResponse> list(@PathVariable UUID workspaceId,
+            @RequestParam(defaultValue = "false") boolean archived,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return service.list(workspaceId, page, size);
+        return service.list(workspaceId, archived, page, size);
     }
 
     @GetMapping("/{projectId}")
@@ -53,13 +55,20 @@ public class ProjectController {
 
     @PutMapping("/{projectId}")
     public ProjectResponse update(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-            @Valid @RequestBody ProjectRequest request) {
-        return service.update(workspaceId, projectId, request);
+            @Valid @RequestBody ProjectRequest request, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.update(workspaceId, projectId, request, ifMatch);
+    }
+
+    @PutMapping("/{projectId}/archive")
+    public ProjectResponse archive(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
+            @Valid @RequestBody ArchiveRequest request,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.archive(workspaceId, projectId, request, ifMatch);
     }
 
     @DeleteMapping("/{projectId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId) {
-        service.delete(workspaceId, projectId);
+    public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        service.delete(workspaceId, projectId, ifMatch);
     }
 }

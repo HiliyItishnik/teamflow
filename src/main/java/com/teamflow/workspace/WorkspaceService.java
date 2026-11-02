@@ -1,6 +1,7 @@
 package com.teamflow.workspace;
 
 import com.teamflow.common.PageResponse;
+import com.teamflow.common.VersionCondition;
 import com.teamflow.common.Pagination;
 import com.teamflow.membership.WorkspaceAccess;
 import com.teamflow.membership.WorkspaceMember;
@@ -44,16 +45,18 @@ public class WorkspaceService {
     }
 
     @Transactional
-    public WorkspaceResponse update(UUID id, WorkspaceRequest request) {
+    public WorkspaceResponse update(UUID id, WorkspaceRequest request, String ifMatch) {
         Workspace workspace = access.lockAndRequireAdmin(id);
+        VersionCondition.check(workspace, ifMatch);
         workspace.update(request.name(), request.description());
         repository.flush();
         return WorkspaceResponse.from(workspace);
     }
 
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, String ifMatch) {
         Workspace workspace = access.lockAndRequireAdmin(id);
+        VersionCondition.check(workspace, ifMatch);
         repository.deleteWithDependents(workspace.getId());
     }
 

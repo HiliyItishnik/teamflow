@@ -29,7 +29,12 @@ class CollaborationMigrationIT extends PostgresIntegrationTest {
             jdbc.update("INSERT INTO " + schema + ".tasks (id,project_id,title,status,priority,created_at,updated_at,version) "
                     + "VALUES (?, ?, 'Existing task', 'IN_PROGRESS', 'HIGH', now() - interval '1 day', now(), 7)", task, project);
 
+            Flyway.configure().dataSource(dataSource).schemas(schema).defaultSchema(schema).target("3").load().migrate();
             Flyway.configure().dataSource(dataSource).schemas(schema).defaultSchema(schema).load().migrate();
+
+            assertThat(jdbc.queryForObject("SELECT archived FROM " + schema + ".projects WHERE id = ?", Boolean.class, project)).isFalse();
+            assertThat(jdbc.queryForObject("SELECT version FROM " + schema + ".tasks WHERE id = ?", Long.class, task)).isEqualTo(7L);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".creation_requests", Long.class)).isZero();
 
             assertThat(jdbc.queryForObject("SELECT user_id FROM " + schema + ".project_members WHERE project_id = ?", UUID.class, project)).isEqualTo(user);
             var event = jdbc.queryForMap("SELECT event_type, from_status, to_status, actor_id, task_version FROM " + schema + ".task_status_history WHERE task_id = ?", task);

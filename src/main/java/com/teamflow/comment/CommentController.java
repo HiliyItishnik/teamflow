@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -32,23 +33,29 @@ public class CommentController {
         return service.list(workspaceId, projectId, taskId, page, size);
     }
 
+    @GetMapping("/{commentId}")
+    public CommentResponse get(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
+            @PathVariable UUID taskId, @PathVariable UUID commentId) {
+        return service.get(workspaceId, projectId, taskId, commentId);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CommentResponse add(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-                               @PathVariable UUID taskId, @Valid @RequestBody CommentRequest request) {
-        return service.add(workspaceId, projectId, taskId, request);
+                               @PathVariable UUID taskId, @Valid @RequestBody CommentRequest request, @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return service.add(workspaceId, projectId, taskId, request, key);
     }
 
     @PutMapping("/{commentId}")
     public CommentResponse edit(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-            @PathVariable UUID taskId, @PathVariable UUID commentId, @Valid @RequestBody CommentRequest request) {
-        return service.edit(workspaceId, projectId, taskId, commentId, request);
+            @PathVariable UUID taskId, @PathVariable UUID commentId, @Valid @RequestBody CommentRequest request, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.edit(workspaceId, projectId, taskId, commentId, request, ifMatch);
     }
 
     @DeleteMapping("/{commentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-                       @PathVariable UUID taskId, @PathVariable UUID commentId) {
-        service.delete(workspaceId, projectId, taskId, commentId);
+                       @PathVariable UUID taskId, @PathVariable UUID commentId, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        service.delete(workspaceId, projectId, taskId, commentId, ifMatch);
     }
 }

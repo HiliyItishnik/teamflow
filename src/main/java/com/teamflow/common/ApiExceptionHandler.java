@@ -47,7 +47,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);
     }
 
-    @ExceptionHandler({DataIntegrityViolationException.class, ObjectOptimisticLockingFailureException.class})
+    @ExceptionHandler(RequestConditionException.class)
+    ProblemDetail precondition(RequestConditionException exception, HttpServletRequest request) {
+        return problem(exception.status(), exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    ProblemDetail concurrentChange(ObjectOptimisticLockingFailureException exception, HttpServletRequest request) {
+        return problem(request.getHeader(HttpHeaders.IF_MATCH) == null ? HttpStatus.CONFLICT : HttpStatus.PRECONDITION_FAILED,
+                "The resource changed. Read it again before editing.", request);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail conflict(RuntimeException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "The resource changed or the operation conflicts with existing data.", request);
     }

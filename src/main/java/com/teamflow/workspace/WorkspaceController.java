@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -51,13 +52,13 @@ public class WorkspaceController {
     }
 
     @PutMapping("/{workspaceId}")
-    public WorkspaceResponse update(@PathVariable UUID workspaceId, @Valid @RequestBody WorkspaceRequest request) {
-        return service.update(workspaceId, request);
+    public WorkspaceResponse update(@PathVariable UUID workspaceId, @Valid @RequestBody WorkspaceRequest request, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.update(workspaceId, request, ifMatch);
     }
 
     @DeleteMapping("/{workspaceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID workspaceId) {
-        service.delete(workspaceId);
+    public void delete(@PathVariable UUID workspaceId, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        service.delete(workspaceId, ifMatch);
     }
 }

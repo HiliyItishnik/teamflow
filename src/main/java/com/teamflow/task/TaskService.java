@@ -1,6 +1,8 @@
 package com.teamflow.task;
 
 import com.teamflow.common.PageResponse;
+import com.teamflow.common.VersionCondition;
+import com.teamflow.common.CreationRequests;
 import com.teamflow.common.Pagination;
 import com.teamflow.common.ResourceNotFoundException;
 import com.teamflow.project.Project;
@@ -28,15 +30,17 @@ public class TaskService {
     private final TaskStatusChangeRepository history;
     private final CurrentUser currentUser;
     private final WorkspaceAccess access;
+    private final CreationRequests creations;
 
     public TaskService(TaskRepository repository, ProjectService projects, ProjectMemberRepository members,
-                       TaskStatusChangeRepository history, CurrentUser currentUser, WorkspaceAccess access) {
+                       TaskStatusChangeRepository history, CurrentUser currentUser, WorkspaceAccess access, CreationRequests creations) {
         this.repository = repository;
         this.projects = projects;
         this.members = members;
         this.history = history;
         this.currentUser = currentUser;
         this.access = access;
+        this.creations = creations;
     }
 
     public PageResponse<TaskResponse> list(UUID workspaceId, UUID projectId,
@@ -60,18 +64,20 @@ public class TaskService {
     }
 
     @Transactional
-    public TaskResponse create(UUID workspaceId, UUID projectId, TaskRequest request) {
-        Project project = projects.requireProject(workspaceId, projectId);
-        Task task = new Task(project, request.title(), request.description(), request.status(),
-                request.priority(), request.dueDate());
-        repository.saveAndFlush(task);
-        history.save(new TaskStatusChange(task, null, currentUser.get(), StatusEventType.CREATED));
-        return TaskResponse.from(task);
+    public TaskResponse create(UUID workspaceId, UUID projectId, TaskRequest request, String key) {
+        Project project = projects.requireWritableProject(workspaceId, projectId);
+        return creations.execute(key, projectId, "tasks:" + projectId, request, TaskResponse.class, () -> {
+            Task task = new Task(project, request.title(), request.description(), request.status(), request.priority(), request.dueDate());
+            repository.saveAndFlush(task);
+            history.save(new TaskStatusChange(task, null, currentUser.get(), StatusEventType.CREATED));
+            return TaskResponse.from(task);
+        });
     }
 
     @Transactional
-    public TaskResponse update(UUID workspaceId, UUID projectId, UUID taskId, TaskRequest request) {
-        Task task = requireTask(workspaceId, projectId, taskId);
+    public TaskResponse update(UUID workspaceId, UUID projectId, UUID taskId, TaskRequest request, String ifMatch) {
+        Task task = requireWritableTask(workspaceId, projectId, taskId);
+        VersionCondition.check(task, ifMatch);
         TaskStatus previous = task.getStatus();
         task.update(request.title(), request.description(), request.status(), request.priority(), request.dueDate());
         repository.flush();
@@ -82,15 +88,17 @@ public class TaskService {
     }
 
     @Transactional
-    public void delete(UUID workspaceId, UUID projectId, UUID taskId) {
-        repository.delete(requireTask(workspaceId, projectId, taskId));
+    public void delete(UUID workspaceId, UUID projectId, UUID taskId, String ifMatch) {
+        Task task = requireWritableTask(workspaceId, projectId, taskId);
+        VersionCondition.check(task, ifMatch);
+        repository.delete(task);
     }
 
     @Transactional
-    public TaskResponse assign(UUID workspaceId, UUID projectId, UUID taskId, AssignmentRequest request) {
+    public TaskResponse assign(UUID workspaceId, UUID projectId, UUID taskId, AssignmentRequest request, String ifMatch) {
         // Same lock order as membership removal, so an assignment cannot race a member's removal.
-        access.lockAndRequireMember(workspaceId);
-        Task task = requireTask(workspaceId, projectId, taskId);
+        Task task = requireWritableTask(workspaceId, projectId, taskId);
+        VersionCondition.check(task, ifMatch);
         var user = request.userId() == null ? null : members.findByProjectIdAndUserId(projectId, request.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Project member not found.")).getUser();
         task.assignTo(user);
@@ -102,6 +110,11 @@ public class TaskService {
         requireTask(workspaceId, projectId, taskId);
         return PageResponse.from(history.findAllByTaskId(taskId,
                 PageRequest.of(page, size, Sort.by("taskVersion"))).map(StatusChangeResponse::from));
+    }
+
+    public Task requireWritableTask(UUID workspaceId, UUID projectId, UUID taskId) {
+        projects.requireWritableProject(workspaceId, projectId);
+        return requireTask(workspaceId, projectId, taskId);
     }
 
     public Task requireTask(UUID workspaceId, UUID projectId, UUID taskId) {

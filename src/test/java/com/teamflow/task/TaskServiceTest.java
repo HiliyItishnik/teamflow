@@ -66,10 +66,10 @@ class TaskServiceTest {
 
     @Test
     void cannotCreateTaskInProjectOutsideWorkspace() {
-        when(projects.requireProject(workspaceId, projectId))
+        when(projects.requireWritableProject(workspaceId, projectId))
                 .thenThrow(new ResourceNotFoundException("Project not found"));
 
-        assertThatThrownBy(() -> service.create(workspaceId, projectId, request))
+        assertThatThrownBy(() -> service.create(workspaceId, projectId, request, null))
                 .isInstanceOf(ResourceNotFoundException.class);
         verifyNoInteractions(repository);
     }
@@ -77,8 +77,8 @@ class TaskServiceTest {
     private void execute(Operation operation) {
         switch (operation) {
             case READ -> service.get(workspaceId, projectId, taskId);
-            case UPDATE -> service.update(workspaceId, projectId, taskId, request);
-            case DELETE -> service.delete(workspaceId, projectId, taskId);
+            case UPDATE -> service.update(workspaceId, projectId, taskId, request, null);
+            case DELETE -> service.delete(workspaceId, projectId, taskId, null);
         }
     }
 }

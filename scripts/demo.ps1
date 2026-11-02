@@ -30,6 +30,7 @@ $handler.UseProxy = $false
 $client = [System.Net.Http.HttpClient]::new($handler)
 $client.Timeout = [TimeSpan]::FromSeconds(10)
 $script:requestCount = 0
+$script:etags = @{}
 
 function Assert-Demo([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw "Проверка демо не пройдена: $Message" }
@@ -41,13 +42,23 @@ function Invoke-DemoApi {
         [Parameter(Mandatory)][string]$Path,
         [string]$Token,
         [object]$Body,
-        [int]$ExpectedStatus = 200
+        [int]$ExpectedStatus = 200,
+        [string]$IdempotencyKey,
+        [string]$IfMatch,
+        [switch]$SkipPrecondition
     )
     $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), "$BaseUrl$Path")
     $response = $null
     try {
         if ($Token) {
             $request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $Token)
+        }
+        if ($IdempotencyKey) { $request.Headers.Add('Idempotency-Key', $IdempotencyKey) }
+        if (-not $SkipPrecondition -and $Method -in @('PUT', 'DELETE') -and
+            $Path -match '/(?:workspaces|projects|tasks|comments)/([0-9a-f-]{36})(?:/(?:assignee|archive))?$') {
+            $resourceId = $Matches[1]
+            $expectedTag = if ($IfMatch) { $IfMatch } else { $script:etags[$resourceId] }
+            if ($expectedTag) { $request.Headers.Add('If-Match', $expectedTag) }
         }
         if ($null -ne $Body) {
             $request.Content = [System.Net.Http.StringContent]::new(
@@ -67,6 +78,9 @@ function Invoke-DemoApi {
             if ($ExpectedStatus -ge 400) {
                 Assert-Demo ($response.Content.Headers.ContentType.MediaType -eq 'application/problem+json') 'формат ошибки'
                 Assert-Demo ($payload.status -eq $ExpectedStatus) 'код ошибки в ProblemDetail'
+            }
+            if ($payload.PSObject.Properties['id'] -and $payload.PSObject.Properties['version']) {
+                $script:etags[$payload.id] = $response.Headers.ETag.ToString()
             }
             return $payload
         }
@@ -166,16 +180,23 @@ try {
     }
 
     Write-Host '[5/7] Комментарии, права автора и история TODO -> IN_PROGRESS -> DONE...'
-    $comment = Invoke-DemoApi -Method POST -Path "$taskPath/comments" -Token $member.accessToken -ExpectedStatus 201 -Body @{body = 'Беру задачу в работу.'}
+    $commentKey = [Guid]::NewGuid().ToString()
+    $comment = Invoke-DemoApi -Method POST -Path "$taskPath/comments" -Token $member.accessToken -ExpectedStatus 201 -IdempotencyKey $commentKey -Body @{body = 'Беру задачу в работу.'}
+    $repeatedComment = Invoke-DemoApi -Method POST -Path "$taskPath/comments" -Token $member.accessToken -ExpectedStatus 201 -IdempotencyKey $commentKey -Body @{body = 'Беру задачу в работу.'}
+    Assert-Demo ($repeatedComment.id -eq $comment.id) 'повтор комментария не создаёт дубликат'
+    $null = Invoke-DemoApi -Method POST -Path "$taskPath/comments" -Token $member.accessToken -ExpectedStatus 409 -IdempotencyKey $commentKey -Body @{body = 'Другое содержимое с тем же ключом'}
     $comment = Invoke-DemoApi -Method PUT -Path "$taskPath/comments/$($comment.id)" -Token $member.accessToken -Body @{body = 'API готов, проверяю сценарии.'}
     Assert-Demo ($comment.body -eq 'API готов, проверяю сценарии.' -and $comment.authorId -eq $member.userId) 'текст и автор комментария'
     $null = Invoke-DemoApi -Method PUT -Path "$taskPath/comments/$($comment.id)" -Token $admin.accessToken -ExpectedStatus 403 -Body @{body = 'Попытка изменить чужой текст'}
     $taskBody = @{title = 'Подготовить API релиза'; description = 'Проверено в демо'; status = 'IN_PROGRESS'; priority = 'HIGH'; dueDate = $assigned.dueDate}
+    $oldTaskEtag = $script:etags[$taskIds[0]]
+    $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody -SkipPrecondition -ExpectedStatus 428
     $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody
     $taskBody.status = 'DONE'
     $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody
     $updated = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody
     Assert-Demo ($updated.assigneeId -eq $member.userId) 'PUT задачи сохраняет исполнителя'
+    $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody -IfMatch $oldTaskEtag -ExpectedStatus 412
     $history = Invoke-DemoApi -Path "$taskPath/history" -Token $admin.accessToken
     Assert-Demo ($history.totalElements -eq 3) 'повторный DONE не создаёт событие'
     Assert-Demo ($history.content[0].eventType -eq 'CREATED' -and $history.content[0].toStatus -eq 'TODO' -and
@@ -196,6 +217,12 @@ try {
     # Возвращаем участника, чтобы готовое демо можно было исследовать под обеими ролями.
     $null = Invoke-DemoApi -Method POST -Path "$projectPath/members" -Token $admin.accessToken -ExpectedStatus 201 -Body @{userId = $member.userId}
     $null = Invoke-DemoApi -Method PUT -Path "$tasksPath/$($taskIds[1])/assignee" -Token $admin.accessToken -Body @{userId = $member.userId}
+
+    $archived = Invoke-DemoApi -Method PUT -Path "$projectPath/archive" -Token $admin.accessToken -Body @{archived = $true}
+    Assert-Demo $archived.archived 'проект архивирован'
+    $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody -ExpectedStatus 409
+    $restored = Invoke-DemoApi -Method PUT -Path "$projectPath/archive" -Token $admin.accessToken -Body @{archived = $false}
+    Assert-Demo (-not $restored.archived) 'проект восстановлен'
 
     Write-Host '[7/7] Демо готово.'
     if (-not $NoSessionFile) {

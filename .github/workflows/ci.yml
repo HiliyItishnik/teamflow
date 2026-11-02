@@ -22,6 +22,7 @@ jobs:
       - name: Build and start Docker Compose
         run: |
           export JWT_SECRET="$(openssl rand -base64 32)"
+          pwsh -File ./scripts/check-env.ps1
           docker compose up --build -d
       - name: Run portfolio demo against Docker Compose
         shell: pwsh

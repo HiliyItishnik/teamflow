@@ -258,7 +258,7 @@ class CollaborationApiIT extends PostgresIntegrationTest {
             })).toList();
             start.countDown();
             List<Integer> results = List.of(futures.get(0).get(30, TimeUnit.SECONDS), futures.get(1).get(30, TimeUnit.SECONDS));
-            assertThat(results).allMatch(code -> code == 200 || code == 409).contains(200);
+            assertThat(results).allMatch(code -> code == 200 || code == 412).contains(200);
             JsonNode events = body(call(HttpMethod.GET, task + "/history", admin, null)).get("content");
             assertThat(events.size()).isEqualTo(1 + results.stream().filter(code -> code == 200).count());
             for (int i = 1; i < events.size(); i++) {
@@ -283,7 +283,7 @@ class CollaborationApiIT extends PostgresIntegrationTest {
                 return call(HttpMethod.DELETE, project + "/members/" + member.id(), admin, null).andReturn().getResponse().getStatus();
             });
             start.countDown();
-            assertThat(assigning.get(30, TimeUnit.SECONDS)).isIn(200, 404);
+            assertThat(assigning.get(30, TimeUnit.SECONDS)).isIn(200, 404, 412);
             assertThat(removing.get(30, TimeUnit.SECONDS)).isEqualTo(204);
         }
         call(HttpMethod.GET, task, admin, null).andExpect(jsonPath("$.assigneeId").doesNotExist());
@@ -304,7 +304,7 @@ class CollaborationApiIT extends PostgresIntegrationTest {
         var builder = request(method, path);
         if (actor != null) builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + actor.token());
         if (payload != null) builder.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(payload));
-        return mvc.perform(builder);
+        return performWithCurrentEtag(builder);
     }
 
     private JsonNode body(ResultActions action) throws Exception {

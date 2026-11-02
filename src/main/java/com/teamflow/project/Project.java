@@ -22,6 +22,12 @@ public class Project extends BaseEntity {
     @Column(length = 2000)
     private String description;
 
+    @Column(nullable = false)
+    private boolean archived;
+
+    public boolean isArchived() { return archived; }
+    public void setArchived(boolean archived) { this.archived = archived; }
+
     protected Project() {}
 
     public Project(Workspace workspace, String name, String description) {

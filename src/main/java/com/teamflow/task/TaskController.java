@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -48,8 +49,8 @@ public class TaskController {
 
     @PostMapping
     public ResponseEntity<TaskResponse> create(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-            @Valid @RequestBody TaskRequest request) {
-        TaskResponse response = service.create(workspaceId, projectId, request);
+            @Valid @RequestBody TaskRequest request, @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        TaskResponse response = service.create(workspaceId, projectId, request, key);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
                 .buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
@@ -57,20 +58,20 @@ public class TaskController {
 
     @PutMapping("/{taskId}")
     public TaskResponse update(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-            @PathVariable UUID taskId, @Valid @RequestBody TaskRequest request) {
-        return service.update(workspaceId, projectId, taskId, request);
+            @PathVariable UUID taskId, @Valid @RequestBody TaskRequest request, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.update(workspaceId, projectId, taskId, request, ifMatch);
     }
 
     @DeleteMapping("/{taskId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId, @PathVariable UUID taskId) {
-        service.delete(workspaceId, projectId, taskId);
+    public void delete(@PathVariable UUID workspaceId, @PathVariable UUID projectId, @PathVariable UUID taskId, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        service.delete(workspaceId, projectId, taskId, ifMatch);
     }
 
     @PutMapping("/{taskId}/assignee")
     public TaskResponse assign(@PathVariable UUID workspaceId, @PathVariable UUID projectId,
-                               @PathVariable UUID taskId, @Valid @RequestBody AssignmentRequest request) {
-        return service.assign(workspaceId, projectId, taskId, request);
+                               @PathVariable UUID taskId, @Valid @RequestBody AssignmentRequest request, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return service.assign(workspaceId, projectId, taskId, request, ifMatch);
     }
 
     @GetMapping("/{taskId}/history")

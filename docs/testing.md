@@ -1,6 +1,6 @@
 # Проверки TeamFlow
 
-Базовая версия содержит **67 JUnit-тестов**: 24 unit/MVC и 43 интеграционных.
+Текущая версия содержит **79 JUnit-тестов**: 24 unit/MVC и 55 интеграционных.
 Это количество сценариев, а не процент покрытия кода.
 В дополнение к ним `scripts/demo.ps1` проверяет пользовательский сценарий через реальный HTTP.
 
@@ -15,7 +15,8 @@
 | `TeamFlowApiIT` | 7 | CRUD, фильтры, пагинация, иерархия URL, каскады, health и OpenAPI |
 | `SecurityApiIT` | 23 | JWT, роли, чужие команды, немедленный отзыв доступа и защита последнего ADMIN |
 | `CollaborationApiIT` | 12 | Участники, исполнители, комментарии, аудит, внешние ключи и конкурентные изменения |
-| `CollaborationMigrationIT` | 1 | Обновление существующей базы с `V2` на `V3` без потери доступа и задач |
+| `CollaborationMigrationIT` | 1 | Обновление существующей базы `V2 → V3 → V4` без потери доступа и задач |
+| `ReliabilityApiIT` | 12 | ETag/If-Match, одновременные изменения, повторы создания, откат транзакции, архив и восстановление |
 
 Особые случаи: одновременное понижение администраторов, конкурирующие изменения статуса,
 назначение во время удаления участника и сохранение устаревшей транзакции после его повторного добавления.
@@ -60,7 +61,7 @@ Workflow [Build and test](https://github.com/HiliyItishnik/teamflow/actions/work
 запускается на push и pull request:
 
 1. JDK 21, `verify -Pintegration`, PostgreSQL в Testcontainers.
-2. Сборка Docker-образа и запуск приложения с отдельной PostgreSQL через Compose.
+2. Диагностика окружения, сборка Docker-образа и запуск приложения с отдельной PostgreSQL через Compose.
 3. `scripts/demo.ps1 -NoSessionFile` в PowerShell: готовность сервиса, регистрация,
    роли, изоляция проектов, задачи, комментарии, история и отзыв доступа.
 4. Логи Compose при ошибке и остановка контейнеров в любом исходе.
@@ -80,9 +81,12 @@ Workflow [Build and test](https://github.com/HiliyItishnik/teamflow/actions/work
 | Демо не дождалось API | `docker compose logs --tail 100 app`; при медленном старте увеличь `-WaitSeconds` |
 | PowerShell пишет `running scripts is disabled` | Проверь `Get-ExecutionPolicy -List`; для проверенных локальных скриптов можно открыть отдельную сессию `powershell.exe -NoProfile -ExecutionPolicy RemoteSigned`. Выполни команды в ней; постоянные настройки не изменяются, групповые политики сохраняют приоритет |
 | `401` при ручном показе | JWT живёт 30 минут; повтори login из `docs/demo.md` |
+| `428` при изменении карточки | Передай заголовок If-Match с ETag, полученным при чтении карточки |
+| `412` при изменении карточки | Данные изменились; перечитай их и сравни со своей формой перед новым сохранением |
 | Flyway checksum mismatch | Проверь локальные изменения опубликованных миграций; новые изменения схемы оформляются следующей миграцией |
 
 Поведение политик выполнения описано в [документации PowerShell](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies).
+Для автоматической диагностики выполни `scripts/check-env.ps1`; для Maven/IDE — с `-Mode Local`.
 
 ## Границы проверок
 

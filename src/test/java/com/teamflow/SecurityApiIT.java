@@ -58,7 +58,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$.id").value(actor.id()))
                 .andExpect(jsonPath("$.email").value("owner@example.test"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
-        mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        performWithCurrentEtag(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(registration("OWNER@example.test"))))
                 .andExpect(status().isConflict());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Long.class)).isEqualTo(1);
@@ -76,7 +76,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
             case "blank-name" -> object.put("displayName", "   ");
             case "role-injection" -> object.put("role", "ADMIN");
         }
-        mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)))
+        performWithCurrentEtag(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)))
                 .andExpect(status().isBadRequest()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Long.class)).isZero();
     }
@@ -84,20 +84,20 @@ class SecurityApiIT extends PostgresIntegrationTest {
     @Test
     void loginAcceptsNormalizedEmailAndDoesNotRevealWhetherBadCredentialsExist() throws Exception {
         Actor actor = register("owner@example.test");
-        String wrongPassword = mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+        String wrongPassword = performWithCurrentEtag(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", actor.email(), "password", "Wrong-password-123"))))
                 .andExpect(status().isUnauthorized()).andReturn().getResponse().getContentAsString();
-        String unknownUser = mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+        String unknownUser = performWithCurrentEtag(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", "unknown@example.test", "password", PASSWORD))))
                 .andExpect(status().isUnauthorized()).andReturn().getResponse().getContentAsString();
         assertThat(json.readTree(wrongPassword)).isEqualTo(json.readTree(unknownUser));
-        String login = mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+        String login = performWithCurrentEtag(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", " OWNER@EXAMPLE.TEST ", "password", PASSWORD))))
                 .andExpect(status().isOk()).andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andReturn().getResponse().getContentAsString();
         String token = json.readTree(login).get("accessToken").asText();
         assertThat(token).isNotEqualTo(actor.token());
-        mvc.perform(get("/api/v1/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andExpect(status().isOk());
+        performWithCurrentEtag(get("/api/v1/auth/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andExpect(status().isOk());
     }
 
     @Test
@@ -113,9 +113,9 @@ class SecurityApiIT extends PostgresIntegrationTest {
         call(HttpMethod.POST, ROOT, null, Map.of("name", "Forbidden")).andExpect(status().isUnauthorized());
         call(HttpMethod.PUT, workspace, null, Map.of("name", "Forbidden")).andExpect(status().isUnauthorized());
         call(HttpMethod.DELETE, workspace, null, null).andExpect(status().isUnauthorized());
-        mvc.perform(get("/actuator/health")).andExpect(status().isOk());
-        mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
-        mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+        performWithCurrentEtag(get("/actuator/health")).andExpect(status().isOk());
+        performWithCurrentEtag(get("/swagger-ui/index.html")).andExpect(status().isOk());
+        performWithCurrentEtag(get("/v3/api-docs")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"));
     }
 
@@ -140,7 +140,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
         token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build())).getTokenValue();
         if (kind.equals("malformed")) token = "broken.jwt.token";
         if (kind.equals("unsigned")) token = "eyJhbGciOiJub25lIn0.e30.";
-        mvc.perform(get(ROOT).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        performWithCurrentEtag(get(ROOT).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
     }
 
@@ -270,7 +270,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
     }
 
     private Actor register(String email) throws Exception {
-        String result = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        String result = performWithCurrentEtag(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(registration(email))))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.expiresIn").value(1800)).andExpect(jsonPath("$.user.password").doesNotExist())
@@ -288,7 +288,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
         var builder = request(method, path);
         if (actor != null) builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + actor.token());
         if (body != null) builder.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body));
-        return mvc.perform(builder);
+        return performWithCurrentEtag(builder);
     }
 
     private String workspace(Actor actor, String name) throws Exception {
