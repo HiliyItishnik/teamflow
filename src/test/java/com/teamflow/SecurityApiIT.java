@@ -120,12 +120,13 @@ class SecurityApiIT extends PostgresIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"malformed", "expired", "wrong-issuer", "wrong-audience", "invalid-subject", "missing-expiry", "future", "wrong-key", "unsigned"})
+    @ValueSource(strings = {"malformed", "expired", "wrong-issuer", "wrong-audience", "invalid-subject", "missing-expiry", "future", "wrong-key", "unsigned", "missing-session", "unknown-session", "foreign-session"})
     void rejectsInvalidTokens(String kind) throws Exception {
         Actor actor = register("token@example.test");
         String token;
         Instant now = Instant.now();
         var claims = JwtClaimsSet.builder().issuer(TokenService.ISSUER).audience(List.of(TokenService.AUDIENCE))
+                .claim("sid", jdbc.queryForObject("SELECT id FROM auth_sessions WHERE user_id = ?", UUID.class, UUID.fromString(actor.id())).toString())
                 .subject(actor.id()).issuedAt(now.minusSeconds(3600)).expiresAt(now.plusSeconds(1800));
         switch (kind) {
             case "expired" -> claims.expiresAt(now.minusSeconds(120));
@@ -134,6 +135,12 @@ class SecurityApiIT extends PostgresIntegrationTest {
             case "invalid-subject" -> claims.subject("not-a-uuid");
             case "missing-expiry" -> claims.claims(map -> map.remove("exp"));
             case "future" -> claims.notBefore(now.plusSeconds(600));
+            case "missing-session" -> claims.claims(map -> map.remove("sid"));
+            case "unknown-session" -> claims.claim("sid", UUID.randomUUID().toString());
+            case "foreign-session" -> {
+                Actor other = register("other@example.test");
+                claims.claim("sid", jdbc.queryForObject("SELECT id FROM auth_sessions WHERE user_id = ?", UUID.class, UUID.fromString(other.id())).toString());
+            }
         }
         JwtEncoder encoder = kind.equals("wrong-key")
                 ? new NimbusJwtEncoder(new ImmutableSecret<>(new SecretKeySpec(new byte[32], "HmacSHA256"))) : jwtEncoder;
@@ -273,7 +280,7 @@ class SecurityApiIT extends PostgresIntegrationTest {
         String result = performWithCurrentEtag(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(registration(email))))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.tokenType").value("Bearer"))
-                .andExpect(jsonPath("$.expiresIn").value(1800)).andExpect(jsonPath("$.user.password").doesNotExist())
+                .andExpect(jsonPath("$.expiresIn").value(900)).andExpect(jsonPath("$.user.password").doesNotExist())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andReturn().getResponse().getContentAsString();
         JsonNode body = json.readTree(result);

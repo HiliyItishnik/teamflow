@@ -53,14 +53,18 @@ public class SecurityConfig {
     JwtEncoder jwtEncoder(SecretKey key) { return new NimbusJwtEncoder(new ImmutableSecret<>(key)); }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey key) {
+    JwtDecoder jwtDecoder(SecretKey key, org.springframework.jdbc.core.JdbcTemplate jdbc) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
         OAuth2TokenValidator<Jwt> requiredClaims = jwt -> {
             try {
-                UUID.fromString(jwt.getSubject());
+                UUID userId = UUID.fromString(jwt.getSubject());
+                UUID sessionId = UUID.fromString(jwt.getClaimAsString("sid"));
                 if (jwt.getExpiresAt() != null && jwt.getIssuedAt() != null
                         && jwt.getExpiresAt().isAfter(jwt.getIssuedAt())
-                        && jwt.getAudience() != null && jwt.getAudience().contains(TokenService.AUDIENCE)) {
+                        && jwt.getAudience() != null && jwt.getAudience().contains(TokenService.AUDIENCE)
+                        && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM auth_sessions "
+                            + "WHERE id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > now())",
+                            Boolean.class, sessionId, userId))) {
                     return OAuth2TokenValidatorResult.success();
                 }
             } catch (IllegalArgumentException | NullPointerException ignored) {
@@ -100,7 +104,8 @@ public class SecurityConfig {
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable()).logout(logout -> logout.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
+                                "/api/v1/auth/refresh", "/api/v1/auth/password/forgot", "/api/v1/auth/password/reset").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(errors).accessDeniedHandler(errors))

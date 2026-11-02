@@ -35,6 +35,9 @@ class CollaborationMigrationIT extends PostgresIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT archived FROM " + schema + ".projects WHERE id = ?", Boolean.class, project)).isFalse();
             assertThat(jdbc.queryForObject("SELECT version FROM " + schema + ".tasks WHERE id = ?", Long.class, task)).isEqualTo(7L);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".creation_requests", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".auth_sessions", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM " + schema + ".workspace_invitations", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT email FROM " + schema + ".users WHERE id = ?", String.class, user)).isEqualTo("old@example.test");
 
             assertThat(jdbc.queryForObject("SELECT user_id FROM " + schema + ".project_members WHERE project_id = ?", UUID.class, project)).isEqualTo(user);
             var event = jdbc.queryForMap("SELECT event_type, from_status, to_status, actor_id, task_version FROM " + schema + ".task_status_history WHERE task_id = ?", task);

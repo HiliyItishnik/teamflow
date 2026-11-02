@@ -35,7 +35,8 @@ Java устанавливать не требуется при запуске п
 - Три задачи: завершённая с комментарием и историей, назначенная участнику и свободная.
 - История первой задачи `TODO → IN_PROGRESS → DONE` с авторами изменений.
 
-Скрипт сохраняет отдельный `target/demo-<id>.json` с UUID, паролями и access token двух участников.
+Скрипт также проверяет подтверждение приглашения, ротацию refresh, обнаружение повтора и logout.
+Скрипт сохраняет отдельный `target/demo-<id>.json` с UUID, паролями, access и refresh token двух участников.
 Он исключён из Git. Не публикуй этот файл и не показывай его целиком при записи экрана.
 `-NoSessionFile` отключает сохранение учётных данных; CI использует этот параметр.
 
@@ -85,7 +86,7 @@ $historyUrl = "$($demo.baseUrl)$($demo.tasksPath)/$($demo.taskIds[0])/history"
     Format-Table eventType, fromStatus, toStatus, actorName, changedAt
 ```
 
-Токен действует 30 минут. Если получил `401`, выполни вход заново и обнови нужный заголовок:
+Access token действует 15 минут. Если получил `401`, выполни вход заново и обнови нужный заголовок:
 
 ```powershell
 $body = @{email = $demo.admin.email; password = $demo.admin.password} | ConvertTo-Json

@@ -23,4 +23,9 @@ public class CurrentUser {
     }
 
     public UUID id() { return get().getId(); }
+
+    public UUID sessionId() {
+        var authentication = (JwtAuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
+        return UUID.fromString(authentication.getToken().getClaimAsString("sid"));
+    }
 }

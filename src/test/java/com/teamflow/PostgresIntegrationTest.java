@@ -68,5 +68,5 @@ abstract class PostgresIntegrationTest {
         return mvc.perform(builder);
     }
 
-    protected void clearDatabase() { jdbc.execute("TRUNCATE TABLE workspaces, users CASCADE"); }
+    protected void clearDatabase() { jdbc.execute("TRUNCATE TABLE workspaces, users, auth_rate_limits CASCADE"); }
 }

@@ -124,12 +124,18 @@ try {
         $auth = Invoke-DemoApi -Method POST -Path '/api/v1/auth/register' -ExpectedStatus 201 -Body @{
             email = $email; displayName = "Demo $role"; password = $password
         }
-        $accounts[$role] = [ordered]@{ userId = $auth.user.id; email = $email; password = $password; accessToken = $auth.accessToken }
+        $accounts[$role] = [ordered]@{ userId = $auth.user.id; email = $email; password = $password; accessToken = $auth.accessToken; refreshToken = $auth.refreshToken }
     }
     $admin = $accounts.admin
     $member = $accounts.member
     $login = Invoke-DemoApi -Method POST -Path '/api/v1/auth/login' -Body @{email = $admin.email; password = $admin.password}
     $admin.accessToken = $login.accessToken
+    $renewed = Invoke-DemoApi -Method POST -Path '/api/v1/auth/refresh' -Body @{token = $login.refreshToken}
+    Assert-Demo ($renewed.sessionId -eq $login.sessionId -and $renewed.refreshToken -ne $login.refreshToken) 'ротация refresh token'
+    $admin.accessToken = $renewed.accessToken
+    $admin.refreshToken = $renewed.refreshToken
+    $sessions = @(Invoke-DemoApi -Path '/api/v1/auth/sessions' -Token $admin.accessToken)
+    Assert-Demo ($sessions.Count -eq 2) 'две активные сессии администратора'
     $me = Invoke-DemoApi -Path '/api/v1/auth/me' -Token $admin.accessToken
     Assert-Demo ($me.id -eq $admin.userId) 'вход администратора'
 
@@ -138,9 +144,13 @@ try {
         name = "TeamFlow Demo $($runId.Substring(0, 8))"; description = 'Демонстрация Java backend: роли, задачи и аудит'
     }
     $workspacePath = "/api/v1/workspaces/$($workspace.id)"
-    $null = Invoke-DemoApi -Method POST -Path "$workspacePath/members" -Token $admin.accessToken -ExpectedStatus 201 -Body @{
+    $invitation = Invoke-DemoApi -Method POST -Path "$workspacePath/invitations" -Token $admin.accessToken -ExpectedStatus 201 -Body @{
         email = $member.email; role = 'MEMBER'
     }
+    $null = Invoke-DemoApi -Method POST -Path '/api/v1/invitations/accept' -Token $accounts.outsider.accessToken -Body @{token = $invitation.token} -ExpectedStatus 404
+    $joined = Invoke-DemoApi -Method POST -Path '/api/v1/invitations/accept' -Token $member.accessToken -Body @{token = $invitation.token}
+    Assert-Demo ($joined.userId -eq $member.userId -and $joined.role -eq 'MEMBER') 'подтверждение приглашения'
+    $null = Invoke-DemoApi -Method POST -Path '/api/v1/invitations/accept' -Token $member.accessToken -Body @{token = $invitation.token} -ExpectedStatus 404
     $project = Invoke-DemoApi -Method POST -Path "$workspacePath/projects" -Token $admin.accessToken -ExpectedStatus 201 -Body @{
         name = 'Релиз TeamFlow'; description = 'Рабочий проект команды'
     }
@@ -223,6 +233,13 @@ try {
     $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody -ExpectedStatus 409
     $restored = Invoke-DemoApi -Method PUT -Path "$projectPath/archive" -Token $admin.accessToken -Body @{archived = $false}
     Assert-Demo (-not $restored.archived) 'проект восстановлен'
+
+    $outsiderRefresh = Invoke-DemoApi -Method POST -Path '/api/v1/auth/refresh' -Body @{token = $accounts.outsider.refreshToken}
+    $null = Invoke-DemoApi -Method POST -Path '/api/v1/auth/refresh' -Body @{token = $accounts.outsider.refreshToken} -ExpectedStatus 401
+    $null = Invoke-DemoApi -Path '/api/v1/auth/me' -Token $outsiderRefresh.accessToken -ExpectedStatus 401
+    $outsiderLogin = Invoke-DemoApi -Method POST -Path '/api/v1/auth/login' -Body @{email = $accounts.outsider.email; password = $accounts.outsider.password}
+    $null = Invoke-DemoApi -Method POST -Path '/api/v1/auth/logout' -Token $outsiderLogin.accessToken -ExpectedStatus 204
+    $null = Invoke-DemoApi -Path '/api/v1/auth/me' -Token $outsiderLogin.accessToken -ExpectedStatus 401
 
     Write-Host '[7/7] Демо готово.'
     if (-not $NoSessionFile) {

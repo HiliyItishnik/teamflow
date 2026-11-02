@@ -24,6 +24,13 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-teamflow}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-teamflow_dev}
       JWT_SECRET: ${JWT_SECRET:?Run scripts/init-env.ps1 or set JWT_SECRET to a random Base64 key}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      MAIL_FROM: ${MAIL_FROM:-}
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     depends_on:

@@ -26,6 +26,12 @@ import java.util.Map;
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    @ExceptionHandler(com.teamflow.auth.TooManyAttemptsException.class)
+    ResponseEntity<ProblemDetail> throttled(com.teamflow.auth.TooManyAttemptsException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfter()))
+                .body(problem(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage(), request));
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     ResponseEntity<ProblemDetail> unauthorized(AuthenticationException exception, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")

@@ -1,0 +1,78 @@
+@baseUrl = http://localhost:8080
+
+### Войти существующим пользователем; токены хранятся локально в HTTP Client
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{"email":"owner@example.test","password":"Change-this-password-123"}
+
+> {% client.global.set("accessToken", response.body.accessToken); client.global.set("refreshToken", response.body.refreshToken); client.global.set("sessionId", response.body.sessionId); %}
+
+### Обновить токены один раз: без Authorization. Старый refresh повторно не использовать
+POST {{baseUrl}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{"token":"{{refreshToken}}"}
+
+> {% client.global.set("accessToken", response.body.accessToken); client.global.set("refreshToken", response.body.refreshToken); %}
+
+### Активные сессии
+GET {{baseUrl}}/api/v1/auth/sessions
+Authorization: Bearer {{accessToken}}
+
+### Создать приглашение в workspace, созданный через teamflow.http
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"email":"member@example.test","role":"MEMBER"}
+
+> {% client.global.set("invitationId", response.body.invitation.id); client.global.set("invitationToken", response.body.token); %}
+
+### История приглашений: коды отсутствуют
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/invitations?page=0&size=20
+Authorization: Bearer {{accessToken}}
+
+### Войти получателем (предварительно зарегистрировать через teamflow.http)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{"email":"member@example.test","password":"Another-password-123"}
+
+> {% client.global.set("inviteeAccessToken", response.body.accessToken); %}
+
+### Подтвердить приглашение; повтор даст 404
+POST {{baseUrl}}/api/v1/invitations/accept
+Authorization: Bearer {{inviteeAccessToken}}
+Content-Type: application/json
+
+{"token":"{{invitationToken}}"}
+
+### Альтернатива подтверждению: ADMIN отзывает ещё не принятое приглашение
+# Для уже принятого приглашения ожидается 409; удаляй членство обычным API
+DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/invitations/{{invitationId}}
+Authorization: Bearer {{accessToken}}
+
+### Запросить письмо: требуется SMTP; ответ 202 не содержит кода
+POST {{baseUrl}}/api/v1/auth/password/forgot
+Content-Type: application/json
+
+{"email":"owner@example.test"}
+
+### Вставить код из письма вместо заполнителя; все сессии владельца отзовутся
+POST {{baseUrl}}/api/v1/auth/password/reset
+Content-Type: application/json
+
+{"token":"ВСТАВЬ-КОД-ИЗ-ПИСЬМА","password":"Changed-password-456"}
+
+### Отозвать отдельную сессию (нужен действующий Bearer)
+DELETE {{baseUrl}}/api/v1/auth/sessions/{{sessionId}}
+Authorization: Bearer {{accessToken}}
+
+### Выйти из текущей сессии (после повторного login)
+POST {{baseUrl}}/api/v1/auth/logout
+Authorization: Bearer {{accessToken}}
+
+### Выйти на всех устройствах (после повторного login)
+DELETE {{baseUrl}}/api/v1/auth/sessions
+Authorization: Bearer {{accessToken}}

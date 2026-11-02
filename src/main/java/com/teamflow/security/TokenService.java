@@ -25,12 +25,13 @@ public class TokenService {
         this.properties = properties;
     }
 
-    public AuthResponse issue(User user) {
+    public AuthResponse issue(User user, UUID sessionId, String refreshToken, Instant refreshExpiresAt) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder().issuer(ISSUER).audience(List.of(AUDIENCE))
-                .subject(user.getId().toString()).id(UUID.randomUUID().toString())
+                .subject(user.getId().toString()).claim("sid", sessionId.toString()).id(UUID.randomUUID().toString())
                 .issuedAt(now).expiresAt(now.plus(properties.timeToLive())).build();
         var token = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims));
-        return new AuthResponse(token.getTokenValue(), "Bearer", properties.timeToLive().toSeconds(), UserResponse.from(user));
+        return new AuthResponse(token.getTokenValue(), "Bearer", properties.timeToLive().toSeconds(), UserResponse.from(user),
+                refreshToken, sessionId, refreshExpiresAt);
     }
 }
