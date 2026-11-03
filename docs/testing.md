@@ -67,6 +67,9 @@ JWT-ключ создаётся в памяти; `.env` тестам не нуж
 Workflow [Build and test](https://github.com/HiliyItishnik/teamflow/actions/workflows/ci.yml)
 запускается на push и pull request:
 
+Отдельный job `secrets` проверяет всю историю Git через Gitleaks с точечными исключениями
+разобранных учебных значений. Правила публикации: [publication.md](publication.md).
+
 1. JDK 21, `verify -Pintegration`, PostgreSQL в Testcontainers.
 2. Проверка синтаксиса браузерного JavaScript; диагностика окружения, сборка Docker-образа и запуск приложения с отдельной PostgreSQL через Compose.
 3. `scripts/demo.ps1 -NoSessionFile` в PowerShell: готовность сервиса, регистрация,

@@ -1,0 +1,6 @@
+# Учебные UUID Idempotency-Key: идентификаторы операций, не ключи доступа.
+9536d6e90f775e43172f5ec3636cc5aa07ce0c61:docs/reliability.md:generic-api-key:61
+9536d6e90f775e43172f5ec3636cc5aa07ce0c61:requests/teamflow.http:generic-api-key:3
+9536d6e90f775e43172f5ec3636cc5aa07ce0c61:requests/teamflow.http:generic-api-key:4
+# Заведомо неподписанный JWT alg=none с пустым payload; проверяется отказ 401.
+0ddd9e7c7118f5ea49e0c060fb0eacf83abb7a0c:src/test/java/com/teamflow/SecurityApiIT.java:generic-api-key:142
