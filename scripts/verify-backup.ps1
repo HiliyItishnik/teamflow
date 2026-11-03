@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <# .SYNOPSIS
 Восстанавливает копию в новую случайную БД, проверяет схему и данные, удаляет только свою проверочную БД.
 #>
@@ -55,8 +55,8 @@ SELECT 'projectMembers=' || count(*) FROM project_members;
         & docker exec $Container rm -f -- $temporary | Out-Null
         if ($LASTEXITCODE -ne 0) { $cleanupFailed = $true }
         if ($created) {
-            & docker exec $Container sh -c 'exec dropdb -U "$POSTGRES_USER" "$1"' -- $database | Out-Null
-            if ($LASTEXITCODE -ne 0) { $cleanupFailed = $true }
+            try { $null = Invoke-PostgresDocker @('exec', $Container, 'sh', '-c', 'exec dropdb -U "$POSTGRES_USER" "$1"', '--', $database) }
+            catch { $cleanupFailed = $true }
         }
         if ($cleanupFailed) { throw "Очистка проверки не завершена: контейнер $Container, временная БД $database, файл $temporary." }
     }

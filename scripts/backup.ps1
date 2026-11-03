@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <# .SYNOPSIS
 Создаёт консистентную копию PostgreSQL в custom-формате и SHA-256 манифест.
 #>

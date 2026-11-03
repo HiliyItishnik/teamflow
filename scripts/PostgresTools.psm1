@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 Set-StrictMode -Version Latest
 
 function Resolve-PostgresContainer([string]$Container) {
@@ -11,6 +11,11 @@ function Resolve-PostgresContainer([string]$Container) {
 }
 
 function Invoke-PostgresDocker([string[]]$DockerArguments) {
+    # Windows PowerShell 5.1 / older PowerShell remove embedded quotes when invoking native tools.
+    $passing = Get-Variable PSNativeCommandArgumentPassing -ValueOnly -ErrorAction SilentlyContinue
+    if ($PSVersionTable.PSVersion -lt [version]'7.3' -or $passing -eq 'Legacy') {
+        $DockerArguments = @($DockerArguments | ForEach-Object { $_.Replace('"', '\"') })
+    }
     $result = & docker @DockerArguments
     if ($LASTEXITCODE -ne 0) { throw "Ошибка Docker/PostgreSQL (код $LASTEXITCODE)." }
     return $result
