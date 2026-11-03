@@ -79,7 +79,7 @@ function Invoke-DemoApi {
                 Assert-Demo ($response.Content.Headers.ContentType.MediaType -eq 'application/problem+json') 'формат ошибки'
                 Assert-Demo ($payload.status -eq $ExpectedStatus) 'код ошибки в ProblemDetail'
             }
-            if ($payload.PSObject.Properties['id'] -and $payload.PSObject.Properties['version']) {
+            if ($payload.PSObject.Properties['id'] -and $payload.PSObject.Properties['version'] -and $null -ne $response.Headers.ETag) {
                 $script:etags[$payload.id] = $response.Headers.ETag.ToString()
             }
             return $payload
@@ -182,6 +182,15 @@ try {
     $filtered = Invoke-DemoApi -Path "$tasksPath`?assigneeId=$($member.userId)&status=TODO&priority=HIGH" -Token $member.accessToken
     Assert-Demo ($filtered.totalElements -eq 1 -and $filtered.content[0].id -eq $taskIds[0]) 'совместный фильтр задач'
     $firstPage = Invoke-DemoApi -Path "$tasksPath`?size=1&page=0" -Token $member.accessToken
+    $searched = Invoke-DemoApi -Path "$tasksPath`?q=API&size=1" -Token $member.accessToken
+    Assert-Demo ($searched.totalElements -eq 1) 'поиск задач до пагинации'
+    $lateTasks = Invoke-DemoApi -Path "$tasksPath`?overdue=true" -Token $member.accessToken
+    Assert-Demo ($lateTasks.totalElements -eq 0) 'будущие сроки не считаются просроченными'
+    $savedFilter = Invoke-DemoApi -Method POST -Path "$projectPath/filters" -Token $member.accessToken -ExpectedStatus 201 -Body @{name = 'Мои срочные'; priority = 'HIGH'; assigneeId = $member.userId}
+    $personalFilters = @(Invoke-DemoApi -Path "$projectPath/filters" -Token $member.accessToken)
+    Assert-Demo ($personalFilters.Count -eq 1 -and $personalFilters[0].id -eq $savedFilter.id) 'сохранение личного фильтра'
+    $adminFilters = @(Invoke-DemoApi -Path "$projectPath/filters" -Token $admin.accessToken)
+    Assert-Demo ($adminFilters.Count -eq 0) 'личные фильтры недоступны другому пользователю'
     $secondPage = Invoke-DemoApi -Path "$tasksPath`?size=1&page=1" -Token $member.accessToken
     Assert-Demo ($firstPage.totalElements -eq 3 -and $firstPage.totalPages -eq 3 -and
         $firstPage.content[0].id -ne $secondPage.content[0].id) 'разные страницы задач'
@@ -233,6 +242,18 @@ try {
     $null = Invoke-DemoApi -Method PUT -Path $taskPath -Token $member.accessToken -Body $taskBody -ExpectedStatus 409
     $restored = Invoke-DemoApi -Method PUT -Path "$projectPath/archive" -Token $admin.accessToken -Body @{archived = $false}
     Assert-Demo (-not $restored.archived) 'проект восстановлен'
+
+    $notificationDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    do {
+        $notifications = Invoke-DemoApi -Path '/api/v1/notifications?unread=true' -Token $member.accessToken
+        if (@($notifications.content | Where-Object { $_.taskId -eq $taskIds[1] }).Count -gt 0) { break }
+        if ([DateTime]::UtcNow -ge $notificationDeadline) { throw 'Фоновая очередь не доставила уведомление за 20 секунд.' }
+        Start-Sleep -Milliseconds 500
+    } while ($true)
+    Assert-Demo ($notifications.content[0].kind -eq 'ASSIGNED') 'уведомление о назначении'
+    $null = Invoke-DemoApi -Method PUT -Path '/api/v1/notifications/read-all' -Token $member.accessToken -ExpectedStatus 204
+    $unreadCount = Invoke-DemoApi -Path '/api/v1/notifications/unread-count' -Token $member.accessToken
+    Assert-Demo ($unreadCount.count -eq 0) 'прочтение уведомлений'
 
     $outsiderRefresh = Invoke-DemoApi -Method POST -Path '/api/v1/auth/refresh' -Body @{token = $accounts.outsider.refreshToken}
     $null = Invoke-DemoApi -Method POST -Path '/api/v1/auth/refresh' -Body @{token = $accounts.outsider.refreshToken} -ExpectedStatus 401

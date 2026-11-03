@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -37,9 +38,11 @@ public class TaskController {
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) TaskPriority priority,
             @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(defaultValue = "false") boolean overdue,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return service.list(workspaceId, projectId, status, priority, assigneeId, page, size);
+        return service.list(workspaceId, projectId, status, priority, assigneeId, q, overdue, page, size);
     }
 
     @GetMapping("/{taskId}")

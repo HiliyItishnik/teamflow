@@ -18,5 +18,6 @@ public class AuthRetention {
         jdbc.update("DELETE FROM password_resets WHERE expires_at < now()");
         jdbc.update("DELETE FROM auth_rate_limits WHERE expires_at < now() - interval '1 day'");
         jdbc.update("DELETE FROM workspace_invitations WHERE expires_at < now() - interval '30 days'");
+        jdbc.update("DELETE FROM background_jobs WHERE completed_at < now() - interval '30 days' OR failed_at < now() - interval '30 days'");
     }
 }

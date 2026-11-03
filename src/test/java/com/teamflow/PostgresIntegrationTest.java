@@ -31,6 +31,7 @@ abstract class PostgresIntegrationTest {
     @DynamicPropertySource
     static void configure(DynamicPropertyRegistry registry) {
         registry.add("teamflow.jwt.secret", () -> TEST_KEY);
+        registry.add("teamflow.jobs.enabled", () -> "false");
         String externalUrl = System.getenv("TEAMFLOW_TEST_DB_URL");
         if (externalUrl != null && !externalUrl.isBlank()) {
             registry.add("spring.datasource.url", () -> externalUrl);
@@ -68,5 +69,5 @@ abstract class PostgresIntegrationTest {
         return mvc.perform(builder);
     }
 
-    protected void clearDatabase() { jdbc.execute("TRUNCATE TABLE workspaces, users, auth_rate_limits CASCADE"); }
+    protected void clearDatabase() { jdbc.execute("TRUNCATE TABLE workspaces, users, auth_rate_limits, background_jobs CASCADE"); }
 }

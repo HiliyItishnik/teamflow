@@ -31,9 +31,11 @@ public class TaskService {
     private final CurrentUser currentUser;
     private final WorkspaceAccess access;
     private final CreationRequests creations;
+    private final com.teamflow.job.BackgroundJobs jobs;
 
     public TaskService(TaskRepository repository, ProjectService projects, ProjectMemberRepository members,
-                       TaskStatusChangeRepository history, CurrentUser currentUser, WorkspaceAccess access, CreationRequests creations) {
+                       TaskStatusChangeRepository history, CurrentUser currentUser, WorkspaceAccess access, CreationRequests creations,
+                       com.teamflow.job.BackgroundJobs jobs) {
         this.repository = repository;
         this.projects = projects;
         this.members = members;
@@ -41,10 +43,11 @@ public class TaskService {
         this.currentUser = currentUser;
         this.access = access;
         this.creations = creations;
+        this.jobs = jobs;
     }
 
     public PageResponse<TaskResponse> list(UUID workspaceId, UUID projectId,
-            TaskStatus status, TaskPriority priority, UUID assigneeId, int page, int size) {
+            TaskStatus status, TaskPriority priority, UUID assigneeId, String q, boolean overdue, int page, int size) {
         projects.requireProject(workspaceId, projectId);
         Specification<Task> filter = (root, query, cb) -> cb.equal(root.get("project").get("id"), projectId);
         if (status != null) {
@@ -55,6 +58,17 @@ public class TaskService {
         }
         if (assigneeId != null) {
             filter = filter.and((root, query, cb) -> cb.equal(root.get("assignee").get("id"), assigneeId));
+        }
+        if (q != null && !q.isBlank()) {
+            String pattern = "%" + q.strip().toLowerCase(java.util.Locale.ROOT)
+                    .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+            filter = filter.and((root, query, cb) -> cb.or(cb.like(cb.lower(root.get("title")), pattern, '\\'),
+                    cb.like(cb.lower(root.get("description")), pattern, '\\')));
+        }
+        if (overdue) {
+            var today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+            filter = filter.and((root, query, cb) -> cb.and(cb.lessThan(root.get("dueDate"), today),
+                    cb.notEqual(root.get("status"), TaskStatus.DONE)));
         }
         return PageResponse.from(repository.findAll(filter, Pagination.of(page, size)).map(TaskResponse::from));
     }
@@ -101,8 +115,10 @@ public class TaskService {
         VersionCondition.check(task, ifMatch);
         var user = request.userId() == null ? null : members.findByProjectIdAndUserId(projectId, request.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Project member not found.")).getUser();
+        UUID previous = task.getAssignee() == null ? null : task.getAssignee().getId();
         task.assignTo(user);
         repository.flush();
+        if (!java.util.Objects.equals(previous, request.userId())) jobs.assigned(task, currentUser.get());
         return TaskResponse.from(task);
     }
 

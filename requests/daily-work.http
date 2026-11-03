@@ -1,0 +1,45 @@
+@baseUrl = http://localhost:8080
+
+### Используй accessToken/workspaceId/projectId из teamflow.http
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/tasks?q=API&overdue=true&priority=HIGH&page=0&size=20
+Authorization: Bearer {{accessToken}}
+
+### Сохранить личный фильтр
+POST {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/filters
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"name":"Просроченные API","q":"API","priority":"HIGH","overdue":true}
+
+> {% client.global.set("filterId", response.body.id); client.global.set("filterEtag", response.headers.valueOf("ETag")); %}
+
+### Мои фильтры
+GET {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/filters
+Authorization: Bearer {{accessToken}}
+
+### Изменить фильтр
+PUT {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/filters/{{filterId}}
+Authorization: Bearer {{accessToken}}
+If-Match: {{filterEtag}}
+Content-Type: application/json
+
+{"name":"Все просроченные","overdue":true}
+
+> {% client.global.set("filterEtag", response.headers.valueOf("ETag")); %}
+
+### Удалить фильтр
+DELETE {{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/{{projectId}}/filters/{{filterId}}
+Authorization: Bearer {{accessToken}}
+If-Match: {{filterEtag}}
+
+### Уведомления приходят после назначения или комментария другого участника
+GET {{baseUrl}}/api/v1/notifications?unread=true&page=0&size=20
+Authorization: Bearer {{accessToken}}
+
+### Непрочитанные
+GET {{baseUrl}}/api/v1/notifications/unread-count
+Authorization: Bearer {{accessToken}}
+
+### Прочитать все
+PUT {{baseUrl}}/api/v1/notifications/read-all
+Authorization: Bearer {{accessToken}}

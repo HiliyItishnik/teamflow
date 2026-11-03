@@ -20,10 +20,12 @@ public class PasswordRecoveryService {
     }
 
     @Transactional
-    public void deliver(String email) {
+    public void deliverQueued(String email, long sequence) {
         var owners = jdbc.queryForList("SELECT id FROM users WHERE email = ? FOR UPDATE", UUID.class, email);
         if (owners.isEmpty()) return;
         UUID owner = owners.getFirst();
+        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM background_jobs WHERE kind = 'PASSWORD_RECOVERY' AND email = ? AND sequence > ?)",
+                Boolean.class, email, sequence))) return;
         String token = SecretTokens.generate();
         jdbc.update("DELETE FROM password_resets WHERE user_id = ?", owner);
         jdbc.update("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, now() + interval '15 minutes')",

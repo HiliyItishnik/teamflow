@@ -158,9 +158,9 @@ class TeamFlowApiIT extends PostgresIntegrationTest {
     @Test
     void databaseConstraintsAndMigrationAreApplied() {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Long.class))
-                .isEqualTo(5);
+                .isEqualTo(6);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.table_constraints "
-                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(17);
+                + "WHERE table_schema = 'public' AND constraint_type = 'FOREIGN KEY'", Long.class)).isEqualTo(22);
     }
 
     @Test

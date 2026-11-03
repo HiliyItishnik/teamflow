@@ -9,13 +9,17 @@ public final class VersionCondition {
     public static String etag(UUID id, long version) { return "\"" + id + ":" + version + "\""; }
 
     public static void check(BaseEntity entity, String expected) {
+        check(entity.getId(), entity.getVersion(), expected);
+    }
+
+    public static void check(UUID id, long version, String expected) {
         if (expected == null || expected.isBlank()) {
             throw new RequestConditionException(HttpStatus.PRECONDITION_REQUIRED, "Read the resource and send its ETag in If-Match.");
         }
         if (!expected.matches("\"[0-9a-fA-F-]{36}:[0-9]+\"")) {
             throw new RequestConditionException(HttpStatus.BAD_REQUEST, "If-Match must contain one exact resource ETag; wildcards are not supported.");
         }
-        if (!etag(entity.getId(), entity.getVersion()).equals(expected)) {
+        if (!etag(id, version).equals(expected)) {
             throw new RequestConditionException(HttpStatus.PRECONDITION_FAILED, "The resource changed. Read it again before editing.");
         }
     }

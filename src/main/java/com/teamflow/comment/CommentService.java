@@ -22,13 +22,16 @@ public class CommentService {
     private final CurrentUser currentUser;
     private final WorkspaceAccess access;
     private final CreationRequests creations;
+    private final com.teamflow.job.BackgroundJobs jobs;
 
-    public CommentService(TaskCommentRepository comments, TaskService tasks, CurrentUser currentUser, WorkspaceAccess access, CreationRequests creations) {
+    public CommentService(TaskCommentRepository comments, TaskService tasks, CurrentUser currentUser, WorkspaceAccess access, CreationRequests creations,
+                          com.teamflow.job.BackgroundJobs jobs) {
         this.comments = comments;
         this.tasks = tasks;
         this.currentUser = currentUser;
         this.access = access;
         this.creations = creations;
+        this.jobs = jobs;
     }
 
     public PageResponse<CommentResponse> list(UUID workspaceId, UUID projectId, UUID taskId, int page, int size) {
@@ -41,7 +44,12 @@ public class CommentService {
     public CommentResponse add(UUID workspaceId, UUID projectId, UUID taskId, CommentRequest request, String key) {
         var task = tasks.requireWritableTask(workspaceId, projectId, taskId);
         return creations.execute(key, projectId, "comments:" + taskId, request, CommentResponse.class,
-                () -> CommentResponse.from(comments.saveAndFlush(new TaskComment(task, currentUser.get(), request.body()))));
+                () -> {
+                    var actor = currentUser.get();
+                    var comment = comments.saveAndFlush(new TaskComment(task, actor, request.body()));
+                    jobs.commented(task, actor);
+                    return CommentResponse.from(comment);
+                });
     }
 
     @Transactional

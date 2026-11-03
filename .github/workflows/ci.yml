@@ -19,6 +19,8 @@ jobs:
         run: |
           chmod +x mvnw
           ./mvnw -B -ntp verify -Pintegration
+      - name: Check browser JavaScript syntax
+        run: node --check src/main/resources/static/assets/app.js
       - name: Build and start Docker Compose
         run: |
           export JWT_SECRET="$(openssl rand -base64 32)"

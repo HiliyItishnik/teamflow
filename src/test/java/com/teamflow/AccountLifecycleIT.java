@@ -32,7 +32,7 @@ class AccountLifecycleIT extends PostgresIntegrationTest {
     private static final String PASSWORD = "Correct-password-123";
     private static final String NEW_PASSWORD = "Changed-password-456";
     @MockitoBean PasswordResetMail mail;
-    @Autowired ThreadPoolTaskExecutor recoveryExecutor;
+    @Autowired com.teamflow.job.JobRunner recoveryExecutor;
     @Autowired AuthRateLimiter limiter;
     @Autowired AuthRetention retention;
     private final Map<String, String> delivered = new ConcurrentHashMap<>();
@@ -49,8 +49,7 @@ class AccountLifecycleIT extends PostgresIntegrationTest {
 
     @AfterEach void finishDelivery() { awaitIdle(); }
     private void awaitIdle() {
-        await().atMost(Duration.ofSeconds(10)).until(() -> recoveryExecutor.getActiveCount() == 0
-                && recoveryExecutor.getThreadPoolExecutor().getQueue().isEmpty());
+        recoveryExecutor.runBatch();
     }
 
     @Test
