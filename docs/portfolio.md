@@ -14,7 +14,8 @@ TeamFlow публикуется по прямому разрешению вла�
 [HiliyItishnik/HiliyItishnik](https://github.com/HiliyItishnik/HiliyItishnik)
 (первоначальный коммит `fdb183635ec947dec942482e2a8eda3c56fc1306`). Локальная копия текста — `profile-README.md`.
 TeamFlow доступен публично: [HiliyItishnik/teamflow](https://github.com/HiliyItishnik/teamflow).
-BookingFlow также открыт: [HiliyItishnik/bookingflow](https://github.com/HiliyItishnik/bookingflow).
+BookingFlow временно приватный по решению владельца. В публичном профиле он обозначен
+как проект в разработке без ссылки на недоступный посетителям код.
 Его первый этап показывает бронирование ресурсов без пересечений, PostgreSQL exclusion constraint,
 отмену и тест восьми одновременных HTTP-запросов на один слот; авторизация и календарь запланированы отдельно.
 После появления сервера добавь в профиль проверенный HTTPS-адрес демонстрации.
