@@ -2,6 +2,8 @@
 
 [![Build and test](https://github.com/HiliyItishnik/teamflow/actions/workflows/ci.yml/badge.svg)](https://github.com/HiliyItishnik/teamflow/actions/workflows/ci.yml)
 
+Исходный код доступен в [публичном репозитории TeamFlow](https://github.com/HiliyItishnik/teamflow).
+
 Учебная система управления командными проектами на **Java 21 + Spring Boot 3.5**.
 Монолит с REST API, PostgreSQL, миграциями Flyway и разделением на controller → service → repository.
 
