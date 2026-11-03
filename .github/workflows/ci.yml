@@ -29,6 +29,9 @@ jobs:
       - name: Run portfolio demo against Docker Compose
         shell: pwsh
         run: ./scripts/demo.ps1 -NoSessionFile
+      - name: Verify isolated HTTPS deployment and backup restore
+        shell: pwsh
+        run: ./scripts/check-deployment.ps1
       - name: Show Compose logs on failure
         if: failure()
         env:

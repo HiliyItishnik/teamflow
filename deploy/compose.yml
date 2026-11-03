@@ -1,0 +1,64 @@
+# Отдельный Compose-проект для VPS; не накладывать поверх локального compose.yaml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: teamflow
+      POSTGRES_USER: teamflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random PostgreSQL password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://postgres:5432/teamflow
+      DB_USERNAME: teamflow
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set a random PostgreSQL password}
+      JWT_SECRET: ${JWT_SECRET:?Set a random Base64 signing key}
+      SPRING_PROFILES_ACTIVE: operations
+      MANAGEMENT_ADDRESS: 0.0.0.0
+      OPERATIONS_KEY: ${OPERATIONS_KEY:?Set a separate random operations key of at least 32 bytes}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      MAIL_FROM: ${MAIL_FROM:-}
+    ports:
+      - "127.0.0.1:${MANAGEMENT_PORT:-9090}:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      TEAMFLOW_DOMAIN: ${TEAMFLOW_DOMAIN:?Set the DNS name, without https://}
+      ACME_EMAIL: ${ACME_EMAIL:?Set certificate notification email}
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_CONTAINER_PORT:-443}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./teamflow.routes:/etc/caddy/teamflow.routes:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

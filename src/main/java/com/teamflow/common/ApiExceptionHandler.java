@@ -80,6 +80,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(exception, body, headers, status, request);
     }
 
+    @Override
+    protected ResponseEntity<Object> createResponseEntity(Object body, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        if (body instanceof ProblemDetail problem) {
+            problem.setProperty("requestId", request.getAttribute("requestId", WebRequest.SCOPE_REQUEST));
+        }
+        return super.createResponseEntity(body, headers, status, request);
+    }
+
     @ExceptionHandler(Exception.class)
     ProblemDetail unexpected(Exception exception, HttpServletRequest request) {
         log.error("Unexpected API error on {} {}", request.getMethod(), request.getRequestURI(), exception);
@@ -89,6 +97,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private ProblemDetail problem(HttpStatus status, String detail, HttpServletRequest request) {
         ProblemDetail body = ProblemDetail.forStatusAndDetail(status, detail);
         body.setInstance(URI.create(request.getRequestURI()));
+        body.setProperty("requestId", request.getAttribute("requestId"));
         return body;
     }
 }

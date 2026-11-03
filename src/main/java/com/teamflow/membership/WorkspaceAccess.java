@@ -13,11 +13,14 @@ public class WorkspaceAccess {
     private final WorkspaceMemberRepository members;
     private final WorkspaceRepository workspaces;
     private final CurrentUser currentUser;
+    private final io.micrometer.core.instrument.Timer lockTimer;
 
-    public WorkspaceAccess(WorkspaceMemberRepository members, WorkspaceRepository workspaces, CurrentUser currentUser) {
+    public WorkspaceAccess(WorkspaceMemberRepository members, WorkspaceRepository workspaces, CurrentUser currentUser,
+                           io.micrometer.core.instrument.MeterRegistry metrics) {
         this.members = members;
         this.workspaces = workspaces;
         this.currentUser = currentUser;
+        this.lockTimer = metrics.timer("teamflow.workspace.lock");
     }
 
     public WorkspaceMember requireMember(UUID workspaceId) {
@@ -34,14 +37,14 @@ public class WorkspaceAccess {
     // Called inside a write transaction. All membership mutations take the same lock
     // before checking the caller's role, preserving the last-admin invariant under concurrency.
     public Workspace lockAndRequireAdmin(UUID workspaceId) {
-        Workspace workspace = workspaces.findByIdForUpdate(workspaceId)
+        Workspace workspace = lockTimer.record(() -> workspaces.findByIdForUpdate(workspaceId))
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found: " + workspaceId));
         requireAdmin(workspaceId);
         return workspace;
     }
 
     public void lockAndRequireMember(UUID workspaceId) {
-        workspaces.findByIdForUpdate(workspaceId)
+        lockTimer.record(() -> workspaces.findByIdForUpdate(workspaceId))
                 .orElseThrow(() -> new ResourceNotFoundException("Workspace not found: " + workspaceId));
         requireMember(workspaceId);
     }

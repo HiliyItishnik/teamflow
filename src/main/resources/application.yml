@@ -32,6 +32,8 @@ spring:
       fail-on-unknown-properties: true
       fail-on-numbers-for-enums: true
 teamflow:
+  operations:
+    key: ${OPERATIONS_KEY:}
   mail:
     from: ${MAIL_FROM:}
   jwt:
@@ -58,3 +60,6 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+logging:
+  pattern:
+    level: "%5p [requestId=%X{requestId:-}]"

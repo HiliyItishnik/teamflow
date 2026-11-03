@@ -90,7 +90,11 @@ class SecurityApiIT extends PostgresIntegrationTest {
         String unknownUser = performWithCurrentEtag(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", "unknown@example.test", "password", PASSWORD))))
                 .andExpect(status().isUnauthorized()).andReturn().getResponse().getContentAsString();
-        assertThat(json.readTree(wrongPassword)).isEqualTo(json.readTree(unknownUser));
+        var wrongBody = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(wrongPassword);
+        var unknownBody = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(unknownUser);
+        // Independent correlation IDs must not affect the uniform invalid-credentials contract.
+        assertThat(wrongBody.remove("requestId").asText()).isNotEqualTo(unknownBody.remove("requestId").asText());
+        assertThat(wrongBody).isEqualTo(unknownBody);
         String login = performWithCurrentEtag(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("email", " OWNER@EXAMPLE.TEST ", "password", PASSWORD))))
                 .andExpect(status().isOk()).andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))

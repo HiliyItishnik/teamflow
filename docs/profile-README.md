@@ -1,0 +1,22 @@
+# HiliyItishnik · Java Backend
+
+Развиваюсь в Java backend: от консольных приложений и файлового хранения к REST API,
+PostgreSQL, безопасности, транзакциям и тестированию.
+
+**Практикую:** Java 21, Spring Boot, Spring Security, JPA, PostgreSQL, Flyway, Docker,
+Maven, JUnit, Testcontainers и GitHub Actions.
+
+## Проекты
+
+| Проект | Что показывает |
+| --- | --- |
+| **TeamFlow** — командные проекты и задачи; репозиторий пока приватный | Java 21 / Spring Boot: роли и изоляция команд, JWT-сессии с ротацией refresh token, транзакции, ETag и идемпотентность, очередь PostgreSQL, интеграционные тесты |
+| [Credit Payment Tracker](https://github.com/HiliyItishnik/credit-payment-tracker) | Spring Boot / PostgreSQL: кредиты и история платежей, расчёты BigDecimal, защита от повторной записи, миграции и API-тесты |
+| [Java Core Task Manager](https://github.com/HiliyItishnik/java-core-task-manager) | Java Core: общий сервис для консольного и веб-интерфейса, коллекции, файлы, поиск и JUnit |
+| [Java Console Calculator](https://github.com/HiliyItishnik/java-console-calculator) | Java 21: десятичная арифметика BigDecimal, проверка ввода, история, тесты и CI |
+
+Проекты учебные. В README каждого открытого репозитория есть инструкции запуска,
+описание ограничений и способы проверки.
+
+Сейчас в TeamFlow работаю над диагностикой, измерением SQL и времени ответа,
+резервным восстановлением и подготовкой HTTPS-демо.

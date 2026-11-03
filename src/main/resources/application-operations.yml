@@ -1,0 +1,15 @@
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        teamflow.workspace.lock: true
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s

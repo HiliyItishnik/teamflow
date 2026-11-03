@@ -1,0 +1,7 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$TEAMFLOW_DOMAIN} {
+    import /etc/caddy/teamflow.routes
+}

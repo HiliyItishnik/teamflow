@@ -39,6 +39,7 @@ public class SecurityProblemHandler implements AuthenticationEntryPoint, AccessD
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         ProblemDetail body = ProblemDetail.forStatusAndDetail(status, detail);
         body.setInstance(URI.create(request.getRequestURI()));
+        body.setProperty("requestId", request.getAttribute("requestId"));
         json.writeValue(response.getOutputStream(), body);
     }
 }
