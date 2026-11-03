@@ -11,7 +11,8 @@ pwsh -File .\scripts\check-deployment.ps1
 ```
 
 Скрипт собирает JAR в Docker, запускает отдельный Compose-проект, проверяет TLS на `localhost`,
-интерфейс, health, перенаправление HTTP → HTTPS и защиту API/метрик. Создаёт двух пользователей,
+интерфейс, health, перенаправление HTTP → HTTPS и защиту API/метрик. Проверяет адрес OpenAPI
+и невозможность обхода IP-лимита поддельными заголовками. Создаёт двух пользователей,
 пространство, проект, задачу, назначение, комментарий и два задания очереди; проверяет их число
 и связи после backup/restore. Доверяет только созданному Caddy корню внутри одного HTTP-клиента;
 системное хранилище сертификатов не меняется, проверка имени и цепочки TLS не отключается.
@@ -46,10 +47,38 @@ docker compose --env-file deploy/.env -f deploy/compose.yml -p teamflow-prod log
 не меняет пароль роли в уже созданном PostgreSQL. Для переносимых секретов можно позднее
 перейти на Compose secrets и Spring configtree, согласовав имена свойств.
 
-Приложение сохраняет `forward-headers-strategy=none`. Входящие `X-Forwarded-*` не становятся
-доверенным адресом клиента. За Caddy лимит по IP видит адрес прокси и объединяет пользователей;
-лимиты по email продолжают работать. Это ограничение небольшого демо, не настройка массового сервиса.
-Доверие к прокси и отдельный лимитер на входе нужно настроить до открытия широкой аудитории.
+## Доверенный прокси
+
+В VPS-конфигурации включены профили `operations,proxy`. Второй использует стандартный
+Tomcat RemoteIpValve: `TRUSTED_PROXY_ADDRESS` превращается в точное совпадение адреса
+через регулярное выражение `\Q<адрес>\E`. Доверия ко всем private/loopback-сетям нет.
+Для обычного запуска профиль не активен, `forward-headers-strategy=none` сохраняется.
+
+Caddy имеет постоянный IPv4 в выделенной сети: по умолчанию `PROXY_ADDRESS=172.30.240.10`
+в `PROXY_SUBNET=172.30.240.0/24`. Backend подключён к этой сети и отдельной внутренней сети БД;
+PostgreSQL подключён только к внутренней сети, Caddy не имеет прямого доступа к БД.
+При конфликте подсетей с Docker/VPN выбери свободную /24 и соответствующий адрес Caddy
+в `deploy/.env` перед запуском. Они должны принадлежать одной подсети; gateway обычно `.1`,
+адрес прокси не должен совпадать с gateway/другим контейнером. Проверка использует отдельную случайную /24.
+
+Caddy перезаписывает `X-Forwarded-For` адресом TCP-клиента и `X-Forwarded-Proto` фактической
+схемой, `X-Forwarded-Host` — hostname запроса, принятого маршрутизатором Caddy,
+`X-Forwarded-Port` — настроенным внешним `HTTPS_PORT`. Клиентский `Forwarded` удаляется.
+Tomcat принимает эти значения только от настроенного адреса прокси. Это сохраняет HTTPS
+и внешний порт в OpenAPI/Swagger и разделяет IP-лимиты пользователей.
+
+Эта схема рассчитана на один Caddy непосредственно перед приложением. Не подключай CDN,
+балансировщик или ещё один прокси без отдельной настройки доверия: Caddy пока считает клиентом
+свой непосредственный TCP-peer. Несколько пользователей за общим NAT по-прежнему делят IP-лимит;
+лимиты по email независимы. Не публикуй backend 8080 и не добавляй посторонние контейнеры
+в сеть proxy. Менять адрес Caddy и список доверия нужно согласованно.
+
+Проверки `ProxyClientIpIT` работают с реальным Tomcat и двумя исходными loopback-адресами,
+а не с MockMvc: посторонний peer не может подменить IP/схему/hostname; доверенный разделяет
+лимиты и передаёт HTTPS/порт. `DirectClientIpIT` проверяет выключенное доверие по умолчанию.
+TLS-сценарий также вращает поддельные IP через настоящий Caddy и получает `429` с `Retry-After`.
+
+## Проверка после запуска
 
 Проверь `https://<домен>/`, `/actuator/health`, Swagger и сценарии с отдельными аккаунтами.
 Метрики читай по loopback 9090 с ключом оператора (см. [operations.md](operations.md)).
@@ -73,3 +102,6 @@ Swagger открыт для демонстрации контракта API; с�
 См. [Caddy: automatic HTTPS](https://caddyserver.com/docs/automatic-https),
 [reverse proxy](https://caddyserver.com/docs/quick-starts/reverse-proxy),
 [Docker Compose в production](https://docs.docker.com/compose/how-tos/production/).
+Настройка доверия: [Tomcat Remote IP Valve](https://tomcat.apache.org/tomcat-10.1-doc/config/valve.html#Remote_IP_Valve),
+[заголовки Caddy reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers),
+[Spring Boot за прокси](https://docs.spring.io/spring-boot/3.5/how-to/webserver.html#howto.webserver.use-behind-a-proxy-server).

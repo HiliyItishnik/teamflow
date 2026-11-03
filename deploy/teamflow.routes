@@ -4,11 +4,23 @@ request_body {
 }
 header Strict-Transport-Security "max-age=31536000"
 handle /actuator/health {
-    reverse_proxy app:9090
+    reverse_proxy app:9090 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up -Forwarded
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Port {$TEAMFLOW_HTTPS_PORT}
+    }
 }
 handle /actuator/* {
     respond 404
 }
 handle {
-    reverse_proxy app:8080
+    reverse_proxy app:8080 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up -Forwarded
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Port {$TEAMFLOW_HTTPS_PORT}
+    }
 }

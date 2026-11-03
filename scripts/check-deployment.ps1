@@ -6,10 +6,11 @@
 param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'PostgresTools.psm1') -Force
 Push-Location (Split-Path -Parent $PSScriptRoot)
 $id = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $project = 'teamflow-deploy-check-' + $id
-$variables = @('TEAMFLOW_DOMAIN', 'ACME_EMAIL', 'POSTGRES_PASSWORD', 'JWT_SECRET', 'OPERATIONS_KEY', 'HTTP_BIND', 'HTTP_PORT', 'HTTPS_PORT', 'HTTPS_CONTAINER_PORT', 'MANAGEMENT_PORT')
+$variables = @('TEAMFLOW_DOMAIN', 'ACME_EMAIL', 'POSTGRES_PASSWORD', 'JWT_SECRET', 'OPERATIONS_KEY', 'HTTP_BIND', 'HTTP_PORT', 'HTTPS_PORT', 'HTTPS_CONTAINER_PORT', 'MANAGEMENT_PORT', 'PROXY_SUBNET', 'PROXY_ADDRESS')
 $previous = @{}
 foreach ($name in $variables) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 function New-CheckSecret { return [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
@@ -39,6 +40,10 @@ $container = $null
 $certPath = Join-Path 'target' "deployment-$id-ca.crt"
 try {
     $env:HTTP_BIND = '127.0.0.1'
+    # A separate /24 leaves the default production proxy subnet available.
+    $networkOctet = Get-Random -Minimum 1 -Maximum 240
+    $env:PROXY_SUBNET = "172.30.$networkOctet.0/24"
+    $env:PROXY_ADDRESS = "172.30.$networkOctet.10"
     $env:HTTP_PORT = [string](Get-FreePort)
     do { $env:HTTPS_PORT = [string](Get-FreePort) } while ($env:HTTPS_PORT -eq $env:HTTP_PORT)
     do { $env:MANAGEMENT_PORT = [string](Get-FreePort) } while ($env:MANAGEMENT_PORT -in @($env:HTTP_PORT, $env:HTTPS_PORT))
@@ -138,13 +143,41 @@ namespace TeamFlow {
     $task = Invoke-CheckJson "$projectPath/tasks" @{title='Задача из копии'; status='TODO'; priority='HIGH'}
     $null = Invoke-CheckJson "$projectPath/tasks/$($task.id)/assignee" @{userId=$peer.user.id} -Method PUT -Etag ('"{0}:{1}"' -f $task.id,$task.version)
     $null = Invoke-CheckJson "$projectPath/tasks/$($task.id)/comments" @{body='Комментарий из копии'}
+    Write-Host 'Проверка доверия к прокси и поддельных Forwarded-заголовков...'
+    $specRequest = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Get, "$url/v3/api-docs")
+    $specRequest.Headers.Add('X-Forwarded-Proto', 'http')
+    $specRequest.Headers.Add('X-Forwarded-Host', 'attacker.example')
+    $specRequest.Headers.Add('X-Forwarded-Port', '1234')
+    $specRequest.Headers.Add('Forwarded', 'for=198.51.100.99;proto=http;host=attacker.example')
+    $specResponse = $client.SendAsync($specRequest).GetAwaiter().GetResult()
+    try {
+        if ([int]$specResponse.StatusCode -ne 200) { throw 'OpenAPI недоступен через TLS-прокси.' }
+        $spec = $specResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+        if ($spec.servers[0].url.TrimEnd('/') -ne $url) { throw 'Поддельные Forwarded-заголовки изменили внешний URL OpenAPI.' }
+    } finally { $specResponse.Dispose(); $specRequest.Dispose() }
+    $initial = @(Invoke-PostgresDocker @('exec', $container, 'psql', '-X', '-U', 'teamflow', '-d', 'teamflow', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', 'SELECT attempts FROM auth_rate_limits'))
+    if ($initial.Count -ne 1) { throw 'Запросы одного клиента не объединены в один IP-лимит.' }
+    for ($i = [int]$initial[0]; $i -le 60; $i++) {
+        $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$url/api/v1/auth/refresh")
+        $request.Content = [Net.Http.StringContent]::new('{"token":"unknown-proxy-check-token"}', [Text.Encoding]::UTF8, 'application/json')
+        $request.Headers.Add('X-Forwarded-For', "198.51.100.$($i+1), 203.0.113.10")
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        try {
+            $expected = if ($i -eq 60) { 429 } else { 401 }
+            if ([int]$response.StatusCode -ne $expected) { throw "Поддельный IP: ожидался HTTP $expected, получен $([int]$response.StatusCode)." }
+            if ($i -eq 60 -and -not $response.Headers.Contains('Retry-After')) { throw 'Лимит не вернул Retry-After.' }
+        } finally { $response.Dispose(); $request.Dispose() }
+    }
+    $proxyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes("auth-ip:$($env:PROXY_ADDRESS)"))).ToLowerInvariant()
+    $buckets = @(Invoke-PostgresDocker @('exec', $container, 'psql', '-X', '-U', 'teamflow', '-d', 'teamflow', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', 'SELECT bucket_hash FROM auth_rate_limits'))
+    if ($buckets.Count -ne 1 -or $buckets[0] -eq $proxyHash) { throw 'IP-лимит использует адрес прокси или поддельные клиентские адреса.' }
     $backup = Join-Path 'target' "deployment-$id.dump"
     & (Join-Path $PSScriptRoot 'backup.ps1') -Container $container -Destination $backup
     $restored = & (Join-Path $PSScriptRoot 'verify-backup.ps1') -Container $container -Backup $backup -PassThru
     foreach ($entry in @{workspaces=1; projects=1; tasks=1; users=2; jobs=2; comments=1; history=1; projectMembers=2}.GetEnumerator()) {
         if ($restored.Counts[$entry.Key] -ne $entry.Value) { throw "Число восстановленных записей не совпало: $($entry.Key)." }
     }
-    Write-Host 'TLS, интерфейс, защита API/метрик и восстановление PostgreSQL проверены.'
+    Write-Host 'TLS, доверенный прокси, IP-лимиты, интерфейс, защита API/метрик и восстановление PostgreSQL проверены.'
 } finally {
     if ($client) { $client.Dispose() }
     if ($operator) { $operator.Dispose() }
